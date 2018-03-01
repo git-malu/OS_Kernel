@@ -1,4 +1,14 @@
 /*
+ * global variables
+ */
+extern int vm_enabled;
+
+/*
+ * constants
+ */
+enum boolean {FALSE, TRUE};
+
+/*
  * System calls
  */
 extern int my_Fork(void);
@@ -27,3 +37,5 @@ void math_eh(ExceptionInfo *);
  */
 int verify_buffer(void *p, int len);
 int verify_string(char *s);
+int SetKernelBrk(void *addr);
+

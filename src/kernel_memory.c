@@ -9,3 +9,9 @@ int verify_buffer(void *p, int len) {
 int verify_string(char *s) {
 
 }
+
+int SetKernelBrk(void *addr) {
+    if (vm_enabled) {
+
+    }
+}
