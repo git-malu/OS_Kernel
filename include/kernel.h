@@ -2,6 +2,9 @@
  * global variables
  */
 extern int vm_enabled;
+extern void *kernel_brk;
+extern unsigned int ff_count;
+extern struct free_frame *frame_list;
 
 /*
  * constants
@@ -24,17 +27,22 @@ extern int my_TtyWrite(int tty_id, void *buf, int len);
 /*
  * interrupt, exception, trap handlers. (acronyms: ih, eh, th)
  */
-void syscall_th(ExceptionInfo *);
-void clock_ih(ExceptionInfo *);
-void tty_receive_ih(ExceptionInfo *);
-void tty_transmit_ih(ExceptionInfo *);
-void illegal_eh(ExceptionInfo *);
-void memory_eh(ExceptionInfo *);
-void math_eh(ExceptionInfo *);
+typedef void (*interruptHandlerType) (ExceptionInfo *);
+void syscall_handler(ExceptionInfo *);
+void clock_handler(ExceptionInfo *);
+void tty_receive_handler(ExceptionInfo *);
+void tty_transmit_handler(ExceptionInfo *);
+void illegal_handler(ExceptionInfo *);
+void memory_handler(ExceptionInfo *);
+void math_handler(ExceptionInfo *);
 
 /*
  * memory utilities
  */
+struct free_frame {
+    int pfn;
+    struct free_frame *next;
+};
 int verify_buffer(void *p, int len);
 int verify_string(char *s);
 int SetKernelBrk(void *addr);

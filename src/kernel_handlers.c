@@ -2,31 +2,31 @@
 #include <comp421/hardware.h>
 #include "../include/kernel.h"
 
-void syscall_th(ExceptionInfo *ex_info) {
+void syscall_handler(ExceptionInfo *ex_info) {
     TracePrintf(1, "this is syscall.");
     Halt();
 }
 
-void clock_ih(ExceptionInfo *ex_info) {
+void clock_handler(ExceptionInfo *ex_info) {
 
 }
 
-void tty_receive_ih(ExceptionInfo *ex_info) {
+void tty_receive_handler(ExceptionInfo *ex_info) {
 
 }
 
-void tty_transmit_ih(ExceptionInfo *ex_info) {
+void tty_transmit_handler(ExceptionInfo *ex_info) {
 
 }
 
-void illegal_eh(ExceptionInfo *ex_info) {
+void illegal_handler(ExceptionInfo *ex_info) {
 
 }
 
-void memory_eh(ExceptionInfo *ex_info) {
+void memory_handler(ExceptionInfo *ex_info) {
 
 }
 
-void math_eh(ExceptionInfo *ex_info) {
+void math_handler(ExceptionInfo *ex_info) {
 
 }

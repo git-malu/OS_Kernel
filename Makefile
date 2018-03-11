@@ -25,7 +25,7 @@
 #	For example, the Makefile will make test1 out of test1.c,
 #	if you have a file named test1.c in this directory.
 #
-ALL = yalnix test1 test2 test3
+ALL = yalnix
 
 #
 #	You must modify the KERNEL_OBJS and KERNEL_SRCS definitions
@@ -33,8 +33,8 @@ ALL = yalnix test1 test2 test3
 #	make up your kernel, and KERNEL_SRCS should  be a list of
 #	the corresponding source files that make up your kernel.
 #
-KERNEL_OBJS = example1.o example2.o
-KERNEL_SRCS = example1.c example2.c
+KERNEL_OBJS = ./src/kernel_start.o ./src/kernel_memory.o ./src/kernel_handlers.o
+KERNEL_SRCS = ./src/kernel_start.c ./src/kernel_memory.c ./src/kernel_handlers.c
 
 #
 #	You should not have to modify anything else in this Makefile
@@ -45,7 +45,7 @@ KERNEL_SRCS = example1.c example2.c
 PUBLIC_DIR = /clear/courses/comp421/pub
 
 CPPFLAGS = -I$(PUBLIC_DIR)/include
-CFLAGS = -g -Wall
+CFLAGS = -g -Wall -std=gnu99
 
 LANG = gcc
 
