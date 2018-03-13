@@ -2,14 +2,25 @@
 #include <comp421/hardware.h>
 #include "../include/kernel.h"
 #include <stdlib.h>
+#include <string.h>
 
-unsigned int get_free_frame();
 
 int verify_buffer(void *p, int len) {
     return 0;
 }
 
 int verify_string(char *s) {
+    struct pte* ptr0 = ReadRegister(REG_PTR0);
+    if (s == NULL) {
+        return ERROR;
+    }
+    if (ptr0[DOWN_TO_PAGE(s) >> PAGESHIFT].valid != 1) {
+        return ERROR;
+    }
+    if (ptr0[DOWN_TO_PAGE(s + strlen(s)) >> PAGESHIFT].valid != 1) {
+        return ERROR;
+    }
+    //TODO: Access check has not been done
     return 0;
 }
 
@@ -46,8 +57,15 @@ unsigned int get_free_frame() {
         return ERROR;
     }
     unsigned int res = frame_list -> pfn;
-    struct free_frame *wanted = frame_list;
+    struct free_frame *old_head = frame_list;
     frame_list = frame_list -> next;
-    free(wanted);
+    free(old_head);
     return res;
+}
+
+void free_a_frame(unsigned int freed_pfn) {
+    struct free_frame *node = malloc(sizeof(struct free_frame));
+    node -> pfn = freed_pfn;
+    node -> next = frame_list;
+    frame_list = node;
 }

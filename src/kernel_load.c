@@ -12,6 +12,7 @@
 
 #include <comp421/hardware.h>
 #include <comp421/loadinfo.h>
+#include <comp421/yalnix.h>
 #include "../include/kernel.h"
 
 /*
@@ -42,14 +43,14 @@
  */
 
 int
-LoadProgram(char *name, char **args)
+LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 {
     int fd;
     int status;
     struct loadinfo li;
-    char *cp;
+    char *cp; //cp means char pointer
     char *cp2;
-    char **cpp;
+    char **cpp; // char pointer pointer
     char *argbuf;
     int i;
     unsigned long argcount;
@@ -61,8 +62,8 @@ LoadProgram(char *name, char **args)
     TracePrintf(0, "LoadProgram '%s', args %p\n", name, args);
 
     if ((fd = open(name, O_RDONLY)) < 0) {
-	TracePrintf(0, "LoadProgram: can't open file '%s'\n", name);
-	return (-1);
+        TracePrintf(0, "LoadProgram: can't open file '%s'\n", name);
+        return (-1);
     }
 
     status = LoadInfo(fd, &li); //LoadInfo is an external function, already provided for you to use.
@@ -88,7 +89,7 @@ LoadProgram(char *name, char **args)
 	li.text_size, li.data_size, li.bss_size);
     TracePrintf(0, "entry 0x%lx\n", li.entry);
 
-    //LoadInfo successfully returns, so it's time to load program.
+    //Lu Ma: LoadInfo successfully returns, so it's time to load program.
 
 
     /*
@@ -97,8 +98,8 @@ LoadProgram(char *name, char **args)
      *  arguments, to become the argc that the new "main" gets called with.
      */
     size = 0;
-    for (i = 0; args[i] != NULL; i++) {
-	    size += strlen(args[i]) + 1; // the argument may look like: "filename\0" "hello\0" "world\0"
+    for (i = 0; args[i] != NULL; i++) { //the final arg must be NULL
+	    size += strlen(args[i]) + 1; // the argument may look like: "filename\0" "hello\0" "world\0", every time we add 1 to include the '\0'
     }
     argcount = i; //equals argc
     TracePrintf(0, "LoadProgram: size %d, argcount %d\n", size, argcount);
@@ -110,7 +111,7 @@ LoadProgram(char *name, char **args)
     cp = argbuf = (char *)malloc(size); //since LoadProgram is a syscall, this malloc function is dedicated for kernel. And it allocates memory in kernel
     for (i = 0; args[i] != NULL; i++) {
 	    strcpy(cp, args[i]);
-	    cp += strlen(cp) + 1;
+	    cp += strlen(cp) + 1; // also give space to each '\0' by +1
     }
   
     /*
@@ -128,9 +129,9 @@ LoadProgram(char *name, char **args)
     cpp = (char **)((unsigned long)cp & (-1 << 4));	/* align cpp */ //align downward. no worry.
     cpp = (char **)((unsigned long)cpp - ((argcount + 4) * sizeof(void *)));
 
-    text_npg = li.text_size >> PAGESHIFT; //npg stands for number of pages
-    data_bss_npg = UP_TO_PAGE(li.data_size + li.bss_size) >> PAGESHIFT;
-    stack_npg = (USER_STACK_LIMIT - DOWN_TO_PAGE(cpp)) >> PAGESHIFT;
+    text_npg = li.text_size >> PAGESHIFT; //npg stands for number of pages //number of text pages
+    data_bss_npg = UP_TO_PAGE(li.data_size + li.bss_size) >> PAGESHIFT; //number of data & bss pages
+    stack_npg = (USER_STACK_LIMIT - DOWN_TO_PAGE(cpp)) >> PAGESHIFT; //number of stack pages
 
     TracePrintf(0, "LoadProgram: text_npg %d, data_bss_npg %d, stack_npg %d\n",
 	text_npg, data_bss_npg, stack_npg);
@@ -158,9 +159,16 @@ LoadProgram(char *name, char **args)
 //    >>>> pages already allocated to this process that will be
 //    >>>> freed below before we allocate the needed pages for
 //    >>>> the new program being loaded.
-
+    //count the number of physical frame to be freed from user process.
+    struct pte *ptr0 = ReadRegister(REG_PTR0);
+    int to_be_freed = 0; //number of physical frames to be freed
+    for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
+        if (ptr0[i].valid == 1) {
+            to_be_freed++;
+        }
+    }
     //count the current process physical memory as "free", since they will be freed before we load the program.
-    if (>>>> not enough free physical memory) {
+    if ( text_npg + data_bss_npg + stack_npg >= ff_count + to_be_freed) { //>>>> not enough free physical memory
         TracePrintf(0,
             "LoadProgram: program '%s' size too large for physical memory\n",
             name);
@@ -169,20 +177,29 @@ LoadProgram(char *name, char **args)
         return (-1);
     }
 
-    >>>> Initialize sp for the current process to (char *)cpp.
-    >>>> The value of cpp was initialized above.
+//    >>>> Initialize sp for the current process to (char *)cpp.
+//    >>>> The value of cpp was initialized above.
+    ex_info -> sp = cpp; // set the initial position of stack pointer
+
 
     /*
      *  Free all the old physical memory belonging to this process,
      *  but be sure to leave the kernel stack for this process (which
      *  is also in Region 0) alone.
      */
-    >>>> Loop over all PTEs for the current process's Region 0,
-    >>>> except for those corresponding to the kernel stack (between
-    >>>> address KERNEL_STACK_BASE and KERNEL_STACK_LIMIT).  For
-    >>>> any of these PTEs that are valid, free the physical memory
-    >>>> memory page indicated by that PTE's pfn field.  Set all
-    >>>> of these PTEs to be no longer valid.
+//    >>>> Loop over all PTEs for the current process's Region 0,
+//    >>>> except for those corresponding to the kernel stack (between
+//    >>>> address KERNEL_STACK_BASE and KERNEL_STACK_LIMIT).  For
+//    >>>> any of these PTEs that are valid, free the physical memory
+//    >>>> memory page indicated by that PTE's pfn field.  Set all
+//    >>>> of these PTEs to be no longer valid.
+    for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
+        //free physical frames and set them invalid
+        if (ptr0[i].valid == 1) {
+            ptr0[i].valid = 0; // set it invalid
+            free_a_frame(ptr0[i].pfn);
+        }
+    }
 
     /*
      *  Fill in the page table with the right number of text,
@@ -192,35 +209,55 @@ LoadProgram(char *name, char **args)
      *  from the file.  We then change them read/execute.
      */
 
-    >>>> Leave the first MEM_INVALID_PAGES number of PTEs in the
-    >>>> Region 0 page table unused (and thus invalid)
+//    >>>> Leave the first MEM_INVALID_PAGES number of PTEs in the
+//    >>>> Region 0 page table unused (and thus invalid)
+    for (int i = 0; i < MEM_INVALID_PAGES; i++) {
+        ptr0[i].valid = 0;
+    }
 
-    /* First, the text pages */
-    >>>> For the next text_npg number of PTEs in the Region 0
-    >>>> page table, initialize each PTE:
-    >>>>     valid = 1
-    >>>>     kprot = PROT_READ | PROT_WRITE
-    >>>>     uprot = PROT_READ | PROT_EXEC
-    >>>>     pfn   = a new page of physical memory
+//    /* First, the text pages */
+//    >>>> For the next text_npg number of PTEs in the Region 0
+//    >>>> page table, initialize each PTE:
+//    >>>>     valid = 1
+//    >>>>     kprot = PROT_READ | PROT_WRITE
+//    >>>>     uprot = PROT_READ | PROT_EXEC
+//    >>>>     pfn   = a new page of physical memory
+    for (int i = MEM_INVALID_PAGES; i < MEM_INVALID_PAGES + text_npg; i++) {
+        ptr0[i].valid = 1;
+        ptr0[i].kprot = PROT_READ | PROT_WRITE;
+        ptr0[i].uprot = PROT_READ | PROT_EXEC;
+        ptr0[i].pfn = get_free_frame();
+    }
 
     /* Then the data and bss pages */
-    >>>> For the next data_bss_npg number of PTEs in the Region 0
-    >>>> page table, initialize each PTE:
-    >>>>     valid = 1
-    >>>>     kprot = PROT_READ | PROT_WRITE
-    >>>>     uprot = PROT_READ | PROT_WRITE
-    >>>>     pfn   = a new page of physical memory
+//    >>>> For the next data_bss_npg number of PTEs in the Region 0
+//    >>>> page table, initialize each PTE:
+//    >>>>     valid = 1
+//    >>>>     kprot = PROT_READ | PROT_WRITE
+//    >>>>     uprot = PROT_READ | PROT_WRITE
+//    >>>>     pfn   = a new page of physical memory
+    for (int i = MEM_INVALID_PAGES + text_npg; i <  MEM_INVALID_PAGES + text_npg + data_bss_npg; i++) {
+        ptr0[i].valid = 1;
+        ptr0[i].kprot = PROT_READ | PROT_WRITE;
+        ptr0[i].uprot = PROT_READ | PROT_WRITE;
+        ptr0[i].pfn = get_free_frame();
+    }
 
     /* And finally the user stack pages */
-    >>>> For stack_npg number of PTEs in the Region 0 page table
-    >>>> corresponding to the user stack (the last page of the
-    >>>> user stack *ends* at virtual address USER_STACK_LIMIT),
-    >>>> initialize each PTE:
-    >>>>     valid = 1
-    >>>>     kprot = PROT_READ | PROT_WRITE
-    >>>>     uprot = PROT_READ | PROT_WRITE
-    >>>>     pfn   = a new page of physical memory
-
+//    >>>> For stack_npg number of PTEs in the Region 0 page table
+//    >>>> corresponding to the user stack (the last page of the
+//    >>>> user stack *ends* at virtual address USER_STACK_LIMIT),
+//    >>>> initialize each PTE:
+//    >>>>     valid = 1
+//    >>>>     kprot = PROT_READ | PROT_WRITE
+//    >>>>     uprot = PROT_READ | PROT_WRITE
+//    >>>>     pfn   = a new page of physical memory
+    for (int i = USER_STACK_LIMIT - stack_npg; i < USER_STACK_LIMIT; i++) {
+        ptr0[i].valid = 1;
+        ptr0[i].kprot = PROT_READ | PROT_WRITE;
+        ptr0[i].uprot = PROT_READ | PROT_WRITE;
+        ptr0[i].pfn = get_free_frame();
+    }
     /*
      *  All pages for the new address space are now in place.  Flush
      *  the TLB to get rid of all the old PTEs from this process, so
@@ -236,10 +273,11 @@ LoadProgram(char *name, char **args)
         TracePrintf(0, "LoadProgram: couldn't read for '%s'\n", name);
         free(argbuf);
         close(fd);
-        >>>> Since we are returning -2 here, this should mean to
-        >>>> the rest of the kernel that the current process should
-        >>>> be terminated with an exit status of ERROR reported
-        >>>> to its parent process.
+//        >>>> Since we are returning -2 here, this should mean to
+//        >>>> the rest of the kernel that the current process should
+//        >>>> be terminated with an exit status of ERROR reported
+//        >>>> to its parent process.
+        my_Exit(ERROR);
         return (-2);
     }
 
@@ -249,21 +287,26 @@ LoadProgram(char *name, char **args)
      *  Now set the page table entries for the program text to be readable
      *  and executable, but not writable.
      */
-    >>>> For text_npg number of PTEs corresponding to the user text
-    >>>> pages, set each PTE's kprot to PROT_READ | PROT_EXEC.
-
+//    >>>> For text_npg number of PTEs corresponding to the user text
+//    >>>> pages, set each PTE's kprot to PROT_READ | PROT_EXEC.
+    for (int i = MEM_INVALID_PAGES; i < MEM_INVALID_PAGES + text_npg; i++) {
+        ptr0[i].valid = 1;
+        ptr0[i].kprot = PROT_READ | PROT_EXEC;
+    }
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
 
     /*
      *  Zero out the bss
      */
+    //Lu Ma: zero out is just a way of initialization dedicated for the variables in bss.
     memset((void *)(MEM_INVALID_SIZE + li.text_size + li.data_size),
 	'\0', li.bss_size);
 
     /*
      *  Set the entry point in the exception frame.
      */
-    >>>> Initialize pc for the current process to (void *)li.entry
+//    >>>> Initialize pc for the current process to (void *)li.entry
+    ex_info -> pc = (void *)li.entry;
 
     /*
      *  Now, finally, build the argument list on the new stack.
@@ -272,7 +315,7 @@ LoadProgram(char *name, char **args)
     cp2 = argbuf;
     for (i = 0; i < argcount; i++) {      /* copy each argument and set argv */
         *cpp++ = cp;
-        strcpy(cp, cp2);
+        strcpy(cp, cp2); // save the string pointed by cp2 to the place pointed by cp
         cp += strlen(cp) + 1;
         cp2 += strlen(cp2) + 1;
     }
@@ -287,9 +330,13 @@ LoadProgram(char *name, char **args)
      *  value for the PSR will make the process run in user mode,
      *  since this PSR value of 0 does not have the PSR_MODE bit set.
      */
-    >>>> Initialize regs[0] through regs[NUM_REGS-1] for the
-    >>>> current process to 0.
-    >>>> Initialize psr for the current process to 0.
+//    >>>> Initialize regs[0] through regs[NUM_REGS-1] for the
+//    >>>> current process to 0.
+//    >>>> Initialize psr for the current process to 0.
+    for (int i = 0; i < NUM_REGS; i++) {
+        ex_info -> regs[i] = 0;
+    }
+    ex_info -> psr = 0; // set to user mode
 
     return (0);
 }

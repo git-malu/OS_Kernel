@@ -15,7 +15,7 @@ enum boolean {FALSE, TRUE};
  * System calls
  */
 extern int my_Fork(void);
-extern int my_Exec(char *filename, char **argvec);
+extern int my_Exec(char *filename, char **argvec, ExceptionInfo *ex_info);
 extern void my_Exit(int status);
 extern int my_Wait(int *status_ptr);
 extern int my_GetPid(void);
@@ -46,4 +46,6 @@ struct free_frame {
 int verify_buffer(void *p, int len);
 int verify_string(char *s);
 int SetKernelBrk(void *addr);
-
+void free_a_frame(unsigned int freed_pfn);
+unsigned int get_free_frame();
+int LoadProgram(char *name, char **args, ExceptionInfo *ex_info);
