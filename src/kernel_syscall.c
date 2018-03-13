@@ -22,7 +22,7 @@ int my_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
 }
 
 void my_Exit(int status) {
-
+    Halt();
 }
 
 int my_Wait(int *status_ptr) {

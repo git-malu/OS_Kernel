@@ -99,6 +99,11 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
      */
     WriteRegister(REG_VM_ENABLE, 1);
     vm_enabled = TRUE;
+
+    /*
+     * start init process
+     */
+    LoadProgram("idle", cmd_args, info);
 }
 
 
