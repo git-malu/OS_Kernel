@@ -10,7 +10,7 @@ int verify_buffer(void *p, int len) {
 }
 
 int verify_string(char *s) {
-    struct pte* ptr0 = ReadRegister(REG_PTR0);
+    struct pte* ptr0 = (struct pte*) ReadRegister(REG_PTR0);
     if (s == NULL) {
         return ERROR;
     }
@@ -33,11 +33,13 @@ int SetKernelBrk(void *addr) { //I assume this addr is physical address both bef
         // we need to update the mapping between vpn and pfn
         struct pte *ptr1 = (struct pte *)ReadRegister(REG_PTR1);
         if (addr - kernel_brk >= 0) {
+            TracePrintf(1, "Lu Ma: Setting kernel Brk when VM is enabled.\n");
             for (int i = (unsigned long)kernel_brk >> PAGESHIFT; i < (unsigned long)addr >> PAGESHIFT; i++) {
-                ptr1[i].pfn = get_free_frame();
-                ptr1[i].uprot = PROT_NONE;
-                ptr1[i].kprot = PROT_READ | PROT_WRITE;
-                ptr1[i].valid = TRUE;
+                int j = i - PAGE_TABLE_LEN;
+                ptr1[j].pfn = get_free_frame();
+                ptr1[j].uprot = PROT_NONE;
+                ptr1[j].kprot = PROT_READ | PROT_WRITE;
+                ptr1[j].valid = TRUE;
             }
         } else {
             //TODO free memory
@@ -46,7 +48,7 @@ int SetKernelBrk(void *addr) { //I assume this addr is physical address both bef
 
     } else {
         //addr is physical address
-        TracePrintf(1, "Setting kernel Brk, VM is not enabled.");
+        TracePrintf(1, "Lu Ma: Setting kernel Brk when VM is not enabled yet.\n");
         kernel_brk = addr; //update kernel_brk
     }
     return 0;

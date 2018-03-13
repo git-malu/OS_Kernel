@@ -2,7 +2,7 @@
 #include <comp421/hardware.h>
 #include "../include/kernel.h"
 int my_Fork(void) {
-
+    return 0;
 }
 
 int my_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
@@ -26,25 +26,25 @@ void my_Exit(int status) {
 }
 
 int my_Wait(int *status_ptr) {
-
+    return 0;
 }
 
 int my_GetPid(void) {
-
+    return 0;
 }
 
 int my_Brk(void *addr) {
-
+    return 0;
 }
 
 int my_Delay(int clock_ticks) {
-
+    return 0;
 }
 
 int my_TtyRead(int tty_id, void *buf, int len) {
-
+    return 0;
 }
 
 int my_TtyWrite(int tty_id, void *buf, int len) {
-
+    return 0;
 }

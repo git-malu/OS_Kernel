@@ -1,5 +1,6 @@
 #include <comp421/yalnix.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <comp421/hardware.h>
 #include "../include/kernel.h"
 
@@ -44,33 +45,16 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
 
 
     /*
-     * initialization page table for region 1
-     */
-    struct pte *ptr1 = malloc(PAGE_TABLE_SIZE);
-    WriteRegister(REG_PTR1, (RCS421RegVal) ptr1);
-
-    //text segment
-    int text_boundary = (unsigned long)(&_etext) >> PAGESHIFT;
-    for (int i = VMEM_1_BASE >> PAGESHIFT; i < text_boundary; i++) {
-        ptr1[i].pfn = i;
-        ptr1[i].uprot = PROT_NONE;
-        ptr1[i].kprot = PROT_READ | PROT_EXEC;
-        ptr1[i].valid = TRUE;
-    }
-    //heap segment
-    int heap_boundary = (unsigned long) kernel_brk >> PAGESHIFT;
-    for (int i = text_boundary; i < heap_boundary; i++) {
-        ptr1[i].pfn = i;
-        ptr1[i].uprot = PROT_NONE;
-        ptr1[i].kprot = PROT_READ | PROT_WRITE;
-        ptr1[i].valid = TRUE;
-    }
-
-    /*
      * initialization page table for region 0
      */
     struct pte *ptr0 = malloc(PAGE_TABLE_SIZE);
     WriteRegister(REG_PTR0, (RCS421RegVal) ptr0);
+    //invalid segment
+    for (int i = 0; i < MEM_INVALID_PAGES; i++) {
+        ptr0[i].valid = FALSE;
+    }
+
+    //kernel stack segment
     for (int i = KERNEL_STACK_BASE >> PAGESHIFT; i < KERNEL_STACK_LIMIT >> PAGESHIFT; i++) {
         ptr0[i].pfn = i;
         ptr0[i].uprot = PROT_NONE;
@@ -80,7 +64,32 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
 
 
     /*
-     * exclude the allocated physical frames from the free frame list
+     * initialization page table for region 1
+     */
+    struct pte *ptr1 = malloc(PAGE_TABLE_SIZE);
+    WriteRegister(REG_PTR1, (RCS421RegVal) ptr1);
+
+    //text segment
+    int text_boundary = (unsigned long)(&_etext) >> PAGESHIFT;
+    int j = 0;
+    for (int i = VMEM_1_BASE >> PAGESHIFT; i < text_boundary; i++, j++) {
+        ptr1[j].pfn = i;
+        ptr1[j].uprot = PROT_NONE;
+        ptr1[j].kprot = PROT_READ | PROT_EXEC;
+        ptr1[j].valid = TRUE;
+    }
+    //heap segment
+    int heap_boundary = (unsigned long) kernel_brk >> PAGESHIFT;
+    for (int i = text_boundary; i < heap_boundary; i++, j++) {
+        ptr1[j].pfn = i;
+        ptr1[j].uprot = PROT_NONE;
+        ptr1[j].kprot = PROT_READ | PROT_WRITE;
+        ptr1[j].valid = TRUE;
+    }
+
+
+    /*
+     * exclude the some allocated physical frames from the free frame list, because they are actually not free
      */
     temp = frame_list;
     while (temp -> next != NULL) {

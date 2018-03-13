@@ -160,7 +160,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 //    >>>> freed below before we allocate the needed pages for
 //    >>>> the new program being loaded.
     //count the number of physical frame to be freed from user process.
-    struct pte *ptr0 = ReadRegister(REG_PTR0);
+    struct pte *ptr0 = (struct pte *)ReadRegister(REG_PTR0);
     int to_be_freed = 0; //number of physical frames to be freed
     for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
         if (ptr0[i].valid == 1) {
