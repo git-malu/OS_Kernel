@@ -58,16 +58,16 @@ unsigned int get_free_frame() {
     if (ff_count <= 0) {
         return ERROR;
     }
-    unsigned int res = frame_list -> pfn;
+    unsigned int res = frame_list->pfn;
     struct free_frame *old_head = frame_list;
-    frame_list = frame_list -> next;
+    frame_list = frame_list->next;
     free(old_head);
     return res;
 }
 
 void free_a_frame(unsigned int freed_pfn) {
     struct free_frame *node = malloc(sizeof(struct free_frame));
-    node -> pfn = freed_pfn;
-    node -> next = frame_list;
+    node->pfn = freed_pfn;
+    node->next = frame_list;
     frame_list = node;
 }

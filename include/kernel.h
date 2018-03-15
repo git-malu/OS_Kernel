@@ -14,18 +14,18 @@ enum boolean {FALSE, TRUE};
 /*
  * System calls
  */
-extern int my_Fork(void);
-extern int my_Exec(char *filename, char **argvec, ExceptionInfo *ex_info);
-extern void my_Exit(int status);
-extern int my_Wait(int *status_ptr);
-extern int my_GetPid(void);
-extern int my_Brk(void *addr);
-extern int my_Delay(int clock_ticks);
-extern int my_TtyRead(int tty_id, void *buf, int len);
-extern int my_TtyWrite(int tty_id, void *buf, int len);
+extern int kernel_Fork(void);
+extern int kernel_Exec(char *filename, char **argvec, ExceptionInfo *ex_info);
+extern void kernel_Exit(int status);
+extern int kernel_Wait(int *status_ptr);
+extern int kernel_GetPid(void);
+extern int kernel_Brk(void *addr);
+extern int kernel_Delay(int clock_ticks);
+extern int kernel_TtyRead(int tty_id, void *buf, int len);
+extern int kernel_TtyWrite(int tty_id, void *buf, int len);
 
 /*
- * interrupt, exception, trap handlers. (acronyms: ih, eh, th)
+ * interrupt, exception, trap handlers.
  */
 typedef void (*interruptHandlerType) (ExceptionInfo *);
 void syscall_handler(ExceptionInfo *);
@@ -48,4 +48,25 @@ int verify_string(char *s);
 int SetKernelBrk(void *addr);
 void free_a_frame(unsigned int freed_pfn);
 unsigned int get_free_frame();
-int LoadProgram(char *name, char **args, ExceptionInfo *ex_info);
+int LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_process);
+
+/*
+ * process utilities
+ */
+struct pcb {
+    unsigned int pid;
+    struct pte *ptr0;
+    void *brk;
+
+    //relations
+    struct pcb *parent;
+    struct pcb *child;
+    struct pcb *sibling;
+    struct pcb *next_ready; //ready queue
+};
+
+
+struct dequeue {
+    struct pcb *head;
+    struct pcb *tail;
+};

@@ -43,7 +43,7 @@
  */
 
 int
-LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
+LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_process)
 {
     int fd;
     int status;
@@ -160,7 +160,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 //    >>>> freed below before we allocate the needed pages for
 //    >>>> the new program being loaded.
     //count the number of physical frame to be freed from user process.
-    struct pte *ptr0 = (struct pte *)ReadRegister(REG_PTR0);
+    struct pte *ptr0 = target_process -> ptr0;
     int to_be_freed = 0; //number of physical frames to be freed
     for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
         if (ptr0[i].valid == 1) {
@@ -179,8 +179,9 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 
 //    >>>> Initialize sp for the current process to (char *)cpp.
 //    >>>> The value of cpp was initialized above.
-    ex_info -> sp = cpp; // set the initial position of stack pointer
 
+    ex_info -> sp = cpp; // set the initial position of stack pointer
+    TracePrintf(0, "Initialize sp to cpp %d\n", cpp);
 
     /*
      *  Free all the old physical memory belonging to this process,
@@ -193,6 +194,8 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 //    >>>> any of these PTEs that are valid, free the physical memory
 //    >>>> memory page indicated by that PTE's pfn field.  Set all
 //    >>>> of these PTEs to be no longer valid.
+    TracePrintf(0, "free the old physical memory, but keep the kernel stack.\n");
+    //still keep the kernel stack
     for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
         //free physical frames and set them invalid
         if (ptr0[i].valid == 1) {
@@ -211,17 +214,19 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 
 //    >>>> Leave the first MEM_INVALID_PAGES number of PTEs in the
 //    >>>> Region 0 page table unused (and thus invalid)
+    TracePrintf(0, "Set MEM_INVALID_PAGES number of PTEs to invalid\n");
     for (int i = 0; i < MEM_INVALID_PAGES; i++) {
         ptr0[i].valid = 0;
     }
 
-//    /* First, the text pages */
+    /* First, the text pages */
 //    >>>> For the next text_npg number of PTEs in the Region 0
 //    >>>> page table, initialize each PTE:
 //    >>>>     valid = 1
 //    >>>>     kprot = PROT_READ | PROT_WRITE
 //    >>>>     uprot = PROT_READ | PROT_EXEC
 //    >>>>     pfn   = a new page of physical memory
+    TracePrintf(0, "Set the PTEs for the text_npg.\n");
     for (int i = MEM_INVALID_PAGES; i < MEM_INVALID_PAGES + text_npg; i++) {
         ptr0[i].valid = 1;
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
@@ -236,6 +241,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 //    >>>>     kprot = PROT_READ | PROT_WRITE
 //    >>>>     uprot = PROT_READ | PROT_WRITE
 //    >>>>     pfn   = a new page of physical memory
+    TracePrintf(0, "Set the PTEs for the data_bss_npg.\n");
     for (int i = MEM_INVALID_PAGES + text_npg; i <  MEM_INVALID_PAGES + text_npg + data_bss_npg; i++) {
         ptr0[i].valid = 1;
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
@@ -252,7 +258,8 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 //    >>>>     kprot = PROT_READ | PROT_WRITE
 //    >>>>     uprot = PROT_READ | PROT_WRITE
 //    >>>>     pfn   = a new page of physical memory
-    for (int i = USER_STACK_LIMIT - stack_npg; i < USER_STACK_LIMIT; i++) {
+    TracePrintf(0, "Set the PTEs for user stack.\n");
+    for (int i = (USER_STACK_LIMIT >> PAGESHIFT) - stack_npg; i < (USER_STACK_LIMIT >> PAGESHIFT); i++) {
         ptr0[i].valid = 1;
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
         ptr0[i].uprot = PROT_READ | PROT_WRITE;
@@ -263,11 +270,13 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
      *  the TLB to get rid of all the old PTEs from this process, so
      *  we'll be able to do the read() into the new pages below.
      */
+    TracePrintf(0, "Flush TLB for page table 0.\n");
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
 
     /*
      *  Read the text and data from the file into memory.
      */
+    TracePrintf(0, "Read program from file.\n");
     if (read(fd, (void *)MEM_INVALID_SIZE, li.text_size+li.data_size)
 	!= li.text_size+li.data_size) {
         TracePrintf(0, "LoadProgram: couldn't read for '%s'\n", name);
@@ -277,7 +286,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
 //        >>>> the rest of the kernel that the current process should
 //        >>>> be terminated with an exit status of ERROR reported
 //        >>>> to its parent process.
-        my_Exit(ERROR);
+        kernel_Exit(ERROR);
         return (-2);
     }
 
@@ -306,7 +315,8 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
      *  Set the entry point in the exception frame.
      */
 //    >>>> Initialize pc for the current process to (void *)li.entry
-    ex_info -> pc = (void *)li.entry;
+    TracePrintf(0, "Initializing PC, the content of li.entry is %d\n", li.entry);
+    ex_info -> pc = li.entry;
 
     /*
      *  Now, finally, build the argument list on the new stack.
@@ -337,6 +347,11 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info)
         ex_info -> regs[i] = 0;
     }
     ex_info -> psr = 0; // set to user mode
+
+    /*
+     * Lu Ma: Initialize brk for the new process
+     */
+    target_process -> brk = (MEM_INVALID_PAGES + text_npg + data_bss_npg) * PAGESIZE;
 
     return (0);
 }
