@@ -38,8 +38,7 @@
 
 /*
  * Lu MA:
- * Since LoadProgram is called by Exec(), contents of Region 0 will be all deleted.
- * It's unlike the context swtich.
+ * load the program into the target_process. Not necessarily current process.
  */
 
 int
@@ -58,6 +57,13 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
     int text_npg;
     int data_bss_npg;
     int stack_npg;
+
+    /*
+     * Lu Ma: initialization
+     */
+    RCS421RegVal save = ReadRegister(REG_PTR0);
+    struct pte *ptr0 = target_process -> ptr0;
+    WriteRegister(REG_PTR0, (RCS421RegVal) ptr0);
 
     TracePrintf(0, "LoadProgram '%s', args %p\n", name, args);
 
@@ -160,7 +166,9 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 //    >>>> freed below before we allocate the needed pages for
 //    >>>> the new program being loaded.
     //count the number of physical frame to be freed from user process.
-    struct pte *ptr0 = target_process -> ptr0;
+
+
+
     int to_be_freed = 0; //number of physical frames to be freed
     for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
         if (ptr0[i].valid == 1) {
@@ -302,7 +310,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
         ptr0[i].valid = 1;
         ptr0[i].kprot = PROT_READ | PROT_EXEC;
     }
-    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+
 
     /*
      *  Zero out the bss
@@ -351,7 +359,11 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
     /*
      * Lu Ma: Initialize brk for the new process
      */
-    target_process -> brk = (MEM_INVALID_PAGES + text_npg + data_bss_npg) * PAGESIZE;
+    unsigned long brk = ((MEM_INVALID_PAGES + text_npg + data_bss_npg) * PAGESIZE);
+    target_process -> brk = (void *)brk;
+
+    //recover
+    WriteRegister(REG_PTR0, save);
 
     return (0);
 }

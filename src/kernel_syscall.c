@@ -10,7 +10,7 @@ int kernel_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
     if (verify_string(filename) < 0) {
         return ERROR;
     }
-    int status = LoadProgram(filename, argvec, ex_info, NULL);
+    int status = LoadProgram(filename, argvec, ex_info, current_process);
     switch (status) {
         case -1:
             return ERROR;

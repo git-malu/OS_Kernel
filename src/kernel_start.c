@@ -97,6 +97,7 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     /*
      * enable virtual memory
      */
+    TracePrintf(0, "Enable the virtual memory.\n");
     WriteRegister(REG_VM_ENABLE, 1);
     vm_enabled = TRUE;
 
@@ -118,17 +119,18 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     TracePrintf(0,"Load idle process\n");
     LoadProgram("./src/idle", cmd_args, info, idle_pcb); // initialize brk at the same time
 
-    /*
-     * create init process and load it.
-     */
-    struct pcb *init_pcb = malloc(sizeof(struct pcb));
-    init_pcb->ptr0 = create_new_ptr0();
-    init_pcb->pid = 1;
-    init_pcb->parent = NULL;
-    init_pcb->child = NULL;
-    init_pcb->sibling = NULL;
-    TracePrintf(0,"Load init process\n");
-    LoadProgram("./src/init", cmd_args, info, init_pcb);
+//    /*
+//     * create init process and load it.
+//     */
+//    struct pcb *init_pcb = malloc(sizeof(struct pcb));
+//    init_pcb->ptr0 = create_new_ptr0();
+//    init_pcb->pid = 1;
+//    init_pcb->parent = NULL;
+//    init_pcb->child = NULL;
+//    init_pcb->sibling = NULL;
+//    TracePrintf(0,"Load init process\n");
+//    LoadProgram("./src/init", cmd_args, info, init_pcb);
+    TracePrintf(0, "kernel start complete!\n");
 }
 
 
@@ -146,4 +148,5 @@ void *create_new_ptr0() {
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
         ptr0[i].valid = TRUE;
     }
+    return ptr0;
 }

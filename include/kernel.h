@@ -5,6 +5,7 @@ extern int vm_enabled;
 extern void *kernel_brk;
 extern unsigned int ff_count;
 extern struct free_frame *frame_list;
+extern struct pcb *current_process;
 
 /*
  * constants
@@ -37,20 +38,6 @@ void memory_handler(ExceptionInfo *);
 void math_handler(ExceptionInfo *);
 
 /*
- * memory utilities
- */
-struct free_frame {
-    int pfn;
-    struct free_frame *next;
-};
-int verify_buffer(void *p, int len);
-int verify_string(char *s);
-int SetKernelBrk(void *addr);
-void free_a_frame(unsigned int freed_pfn);
-unsigned int get_free_frame();
-int LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_process);
-
-/*
  * process utilities
  */
 struct pcb {
@@ -64,6 +51,23 @@ struct pcb {
     struct pcb *sibling;
     struct pcb *next_ready; //ready queue
 };
+
+/*
+ * memory utilities
+ */
+struct free_frame {
+    int pfn;
+    struct free_frame *next;
+};
+int verify_buffer(void *p, int len);
+int verify_string(char *s);
+int SetKernelBrk(void *addr);
+void free_a_frame(unsigned int freed_pfn);
+unsigned int get_free_frame();
+int LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_process);
+void *create_new_ptr0();
+
+
 
 
 struct dequeue {
