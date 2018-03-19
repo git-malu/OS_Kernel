@@ -2,7 +2,7 @@
 #include <comp421/hardware.h>
 #include "../include/kernel.h"
 
-SavedContext *ctx_sw_Delay(SavedContext *, void *, void *);
+SavedContext *delay_to_idle(SavedContext *, void *, void *);
 
 int kernel_Fork(void) {
     TracePrintf(0, "Syscall: kernel_Fork syscall is called.\n");
@@ -55,17 +55,18 @@ int kernel_Delay(int clock_ticks) {
         return 0;//return immediately
     }
     current_process->countdown = clock_ticks;
-    ContextSwitch(ctx_sw_Delay, current_process->ctx, current_process, idle_pcb);
+    delay_list_add(current_process); // add to delay list
+    ContextSwitch(delay_to_idle, current_process->ctx, current_process, idle_pcb);
     return 0;
 }
 
-SavedContext *ctx_sw_Delay(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+SavedContext *delay_to_idle(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
     WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
     current_process = pcb_to;
-    delay_list_add(pcb_from);
     return ((struct pcb *)pcb_to)->ctx;
 };
+
 
 /*
  * terminal

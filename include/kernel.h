@@ -6,8 +6,10 @@
  */
 extern int vm_enabled;
 extern void *kernel_brk;
+extern void *page_table_brk;
 extern unsigned int ff_count;
 extern struct free_frame *frame_list;
+extern struct free_page_table *page_table_list;
 extern struct pcb *current_process;
 extern struct pcb *idle_pcb;
 extern struct pcb *init_pcb;
@@ -74,6 +76,16 @@ struct free_frame {
     int pfn;
     struct free_frame *next;
 };
+
+struct free_page_table {
+    int free;
+    unsigned int pfn;
+    void *vir_addr;
+    void *phy_addr;
+    struct free_page_table *another_half;
+    struct free_page_table *next;
+};
+
 int verify_buffer(void *p, int len);
 int verify_string(char *s);
 int SetKernelBrk(void *addr);
@@ -85,4 +97,4 @@ void pcb_queue_add(int q_name, struct pcb *target_pcb);
 struct pcb *pcb_queue_get(int q_name);
 void delay_list_add(struct pcb *delayed_process);
 void delay_list_update();
-
+struct free_page_table *get_free_page_table();

@@ -1,5 +1,6 @@
 #include <comp421/yalnix.h>
 #include <comp421/hardware.h>
+#include <stdlib.h>
 #include "../include/kernel.h"
 //    #define	YALNIX_FORK		1
 //    #define	YALNIX_EXEC		2
@@ -11,7 +12,8 @@
 //
 //    #define	YALNIX_TTY_READ		21
 //    #define	YALNIX_TTY_WRITE	22
-SavedContext *ctx_sw_clock(SavedContext *ctxp, void *pcb_from, void *pcb_to);
+SavedContext *sw_to_next_ready(SavedContext *ctxp, void *pcb_from, void *pcb_to);
+SavedContext *sw_to_idle(SavedContext *ctxp, void *pcb_from, void *pcb_to);
 
 void syscall_handler(ExceptionInfo *ex_info) {
 
@@ -47,15 +49,28 @@ void syscall_handler(ExceptionInfo *ex_info) {
 void clock_handler(ExceptionInfo *ex_info) {
     static int robin_count = 0;
     TracePrintf(2, "clock_handler is triggered. the tick count is %d.\n", robin_count);
+
+    delay_list_update(); //check all the delayed processes, and move whose time's up to the ready queue
+
     if (++robin_count == 2) { //TODO >=2
         robin_count = 0;
-        ContextSwitch(ctx_sw_clock, current_process->ctx, current_process, pcb_queue_get(READY_QUEUE));
-//        ContextSwitch(ctx_sw_clock, current_process->ctx, current_process, idle_pcb);
+        struct pcb *ready_next = pcb_queue_get(READY_QUEUE);
+        if (ready_next == NULL) {
+            if (current_process->pid == 0) {
+                return;
+            } else {
+                //switch to idle
+                ContextSwitch(sw_to_idle, current_process->ctx, current_process, idle_pcb);
+            }
+        } else {
+            //switch to next ready process
+            ContextSwitch(sw_to_next_ready, current_process->ctx, current_process, ready_next);
+        }
     }
 //    //TODO add delay syscall processing
 }
 
-SavedContext *ctx_sw_clock(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+SavedContext *sw_to_next_ready(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
     TracePrintf(0, "Context swtich: clock handler: now in my context switch function, the pcb_to is pid %d.\n", ((struct pcb *)pcb_to)->pid);
     WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
@@ -65,7 +80,15 @@ SavedContext *ctx_sw_clock(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
     return ((struct pcb *)pcb_to)->ctx;
 };
 
-//SavedContext *ctx_sw_clock(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+SavedContext *sw_to_idle(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+    TracePrintf(0, "Context swtich: clock handler: switch from pid %d from idle process.\n", ((struct pcb *)pcb_from)->pid);
+    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    current_process = pcb_to;
+    return ((struct pcb *)pcb_to)->ctx;
+};
+
+//SavedContext *sw_to_next_ready(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
 //    TracePrintf(0, "Context swtich: clock handler: now in my context switch function");
 //    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
 //    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);

@@ -10,5 +10,4 @@ int main(int argc, char *argv[]) {
         Pause();
         printf("Now in idle process. Pause is released once. The pid is %d.\n", GetPid());
     }
-    return 0;
 }

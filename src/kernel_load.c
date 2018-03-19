@@ -61,8 +61,9 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
     /*
      * Lu Ma: initialization
      */
-    struct pte *ptr0 = (struct pte *) ReadRegister(REG_PTR0);// read() will use the current ptr0 in the register!
-//    struct pte *ptr0 = target_process -> ptr0;
+//    struct pte *ptr0 = (struct pte *) ReadRegister(REG_PTR0);// read() will use the current ptr0 in the register!
+
+    struct pte *ptr0 = target_process -> ptr0;
 //    WriteRegister(REG_PTR0, (RCS421RegVal) ptr0);
 
     TracePrintf(0, "LoadProgram '%s', args %p\n", name, args);
