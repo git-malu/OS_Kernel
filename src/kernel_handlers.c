@@ -11,6 +11,8 @@
 //
 //    #define	YALNIX_TTY_READ		21
 //    #define	YALNIX_TTY_WRITE	22
+SavedContext *ctx_sw_clock(SavedContext *ctxp, void *pcb_from, void *pcb_to);
+
 void syscall_handler(ExceptionInfo *ex_info) {
 
     TracePrintf(1, "Now enter syscall_handler. The code is %d.\n", ex_info->code);
@@ -26,10 +28,12 @@ void syscall_handler(ExceptionInfo *ex_info) {
         case YALNIX_WAIT:
             break;
         case YALNIX_GETPID:
+            ex_info->regs[0] = kernel_GetPid(current_process);
             break;
         case YALNIX_BRK:
             break;
         case YALNIX_DELAY:
+            kernel_Delay(ex_info->regs[1]);
             break;
         case YALNIX_TTY_READ:
             break;
@@ -38,13 +42,39 @@ void syscall_handler(ExceptionInfo *ex_info) {
         default:
             break;
     }
-
-//    Halt();
 }
 
 void clock_handler(ExceptionInfo *ex_info) {
-
+    static int robin_count = 0;
+    TracePrintf(2, "clock_handler is triggered. the tick count is %d.\n", robin_count);
+    if (++robin_count == 2) { //TODO >=2
+        robin_count = 0;
+        ContextSwitch(ctx_sw_clock, current_process->ctx, current_process, pcb_queue_get(READY_QUEUE));
+//        ContextSwitch(ctx_sw_clock, current_process->ctx, current_process, idle_pcb);
+    }
+//    //TODO add delay syscall processing
 }
+
+SavedContext *ctx_sw_clock(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+    TracePrintf(0, "Context swtich: clock handler: now in my context switch function, the pcb_to is pid %d.\n", ((struct pcb *)pcb_to)->pid);
+    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    current_process = pcb_to;
+    pcb_queue_add(READY_QUEUE, pcb_from);//TODO unsure
+    TracePrintf(0, "Context swtich: clock handler: end of context switch funciton.\n");//TODO test
+    return ((struct pcb *)pcb_to)->ctx;
+};
+
+//SavedContext *ctx_sw_clock(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+//    TracePrintf(0, "Context swtich: clock handler: now in my context switch function");
+//    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
+//    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+//    current_process = pcb_to;
+//    pcb_queue_add(READY_QUEUE, pcb_from);//TODO unsure
+//    TracePrintf(0, "ctx is %s when clock\n", *(idle_pcb->ctx)->s);//TODO test
+//    return ((struct pcb *)pcb_to)->ctx;
+//};
+
 
 void tty_receive_handler(ExceptionInfo *ex_info) {
 

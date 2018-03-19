@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <comp421/hardware.h>
+#include <string.h>
 #include "../include/kernel.h"
 
 void *kernel_brk;
@@ -9,14 +10,21 @@ int vm_enabled = FALSE;
 unsigned int ff_count = 0; //free frame count
 interruptHandlerType interrupt_vector[TRAP_VECTOR_SIZE];
 struct free_frame *frame_list; //trace all the physical memory
-struct dequeue *ready_queue;
 struct pcb *current_process;
+struct pcb *idle_pcb;
+struct pcb *init_pcb;
+struct dequeue queues[NUM_QUEUES];
+struct pcb *delay_list;
+/////////////
+struct pte *ptr0_idle;
+struct pte *ptr0_init;
 
-
+SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to); //TODO test only
+SavedContext *save_ctx(SavedContext *ctxp, void *pcb_from, void *pcb_to);
+SavedContext *do_nothing(SavedContext *ctxp, void *pcb_from, void *pcb_to) { return ctxp;};
 
 void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **cmd_args) {
     kernel_brk = (void *) UP_TO_PAGE(orig_brk); //round up and save kernel_brk
-
 
     /*
      * initialize interrupt vector table
@@ -51,8 +59,22 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     /*
      * initialization page table for region 0
      */
-    struct pte *ptr0 = create_new_ptr0();
-    WriteRegister(REG_PTR0, (RCS421RegVal) ptr0);
+    ptr0_idle = malloc(PAGE_TABLE_SIZE);
+    ptr0_init = malloc(PAGE_TABLE_SIZE);
+    WriteRegister(REG_PTR0, (RCS421RegVal) ptr0_idle);
+    //invalid segment
+    for (int i = 0; i < MEM_INVALID_PAGES; i++) {
+        ptr0_idle[i].valid = FALSE;
+    }
+
+    //kernel stack segment
+    for (int i = KERNEL_STACK_BASE >> PAGESHIFT; i < KERNEL_STACK_LIMIT >> PAGESHIFT; i++) {
+        ptr0_idle[i].pfn = i;
+        ptr0_idle[i].uprot = PROT_NONE;
+        ptr0_idle[i].kprot = PROT_READ | PROT_WRITE;
+        ptr0_idle[i].valid = TRUE;
+    }
+
 
     /*
      * initialization page table for region 1
@@ -104,39 +126,81 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     /*
      * process scheduling queue initialization
      */
-    ready_queue = malloc(sizeof(struct dequeue)); //create ready_queue
+    for (int i = 0; i < NUM_QUEUES; i++) {
+        queues[i].head = NULL;
+        queues[i].tail = NULL;
+    }
+    delay_list = NULL;
+
 
     /*
-     * create idle process
+     * create idle PCB, load idle process.
      */
-
-    struct pcb *idle_pcb = malloc(sizeof(struct pcb));
+    idle_pcb = malloc(sizeof(struct pcb));
     idle_pcb->pid = 0;
-    idle_pcb->ptr0 = create_new_ptr0();
+    idle_pcb->ptr0 = ptr0_idle;
+    idle_pcb->ctx = malloc(sizeof(SavedContext));
+    idle_pcb->countdown = 0;
     idle_pcb->child = NULL;
-    idle_pcb->next_ready = NULL;
     idle_pcb->parent = NULL;
-    TracePrintf(0,"Load idle process\n");
+    idle_pcb->sibling = NULL;
+    for (int i = 0; i < NUM_QUEUES; i++) {
+        idle_pcb->next[i] = NULL;
+    }
+    TracePrintf(0,"Kernelstart: Load idle process\n");
+
+    //load program to idle process
     LoadProgram("./src/idle", cmd_args, info, idle_pcb); // initialize brk at the same time
-    TracePrintf(0,"idle process is successfully loaded.\n");
+
+
+
+
+
+    TracePrintf(0,"Kernelstart: idle process is successfully loaded.\n");
+
+    pcb_queue_add(READY_QUEUE, idle_pcb);//TODO just for test here, remove it later!
+
+////    ContextSwitch(do_nothing, idle_pcb->ctx, idle_pcb, idle_pcb);//TODO test only
+//    TracePrintf(0,"debug: back to do_nothing contextswtich\n");
 
     /*
-     * create init process and load it.
+     * create init PCB
      */
-    struct pcb *init_pcb = malloc(sizeof(struct pcb));
-    init_pcb->ptr0 = ptr0;
+    init_pcb = malloc(sizeof(struct pcb));
+    init_pcb->ptr0 = initialize_ptr0(ptr0_init);
     init_pcb->pid = 1;
+    init_pcb->ctx = malloc(sizeof(SavedContext));
+    init_pcb->countdown = 0;
     init_pcb->parent = NULL;
     init_pcb->child = NULL;
     init_pcb->sibling = NULL;
-    TracePrintf(0,"Load init process\n");
+    for (int i = 0; i < NUM_QUEUES; i++) {
+        init_pcb->next[i] = NULL;
+    }
+    TracePrintf(0, "Kernelstart: Load init process\n");
+
+//    current_process = init_pcb;//set current user process //already init pcb
+
+    //copy 4 physical pages
+//    ContextSwitch(idle_ks_copy, malloc(sizeof(SavedContext)), idle_pcb, init_pcb);//TODO test only
+
+    current_process = init_pcb;
+    ContextSwitch(idle_ks_copy, idle_pcb->ctx, idle_pcb, init_pcb); //TODO test!!!!!!
+    if (current_process->pid == 0) {
+        return; // return immediately
+    }
+
+    //load
+    TracePrintf(0, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!\n");
     LoadProgram("./src/init", cmd_args, info, init_pcb);
-    TracePrintf(0, "kernel start complete!\n");
+    //save context
+//    ContextSwitch(save_ctx, idle_pcb->ctx, NULL, NULL); //TODO test!!!!!!
+    TracePrintf(0, "!~~!~~~!~~~~!~~!~~~~~~!~~~~!~~~!~~~~~~~!~~~~~!~~~~!~~!\n");
+    TracePrintf(0, "Kernelstart: kernel start complete!\n");
 }
 
 
-void *create_new_ptr0() {
-    struct pte *ptr0 = malloc(PAGE_TABLE_SIZE);
+struct pte *initialize_ptr0(struct pte *ptr0) {
     //invalid segment
     for (int i = 0; i < MEM_INVALID_PAGES; i++) {
         ptr0[i].valid = FALSE;
@@ -144,10 +208,37 @@ void *create_new_ptr0() {
 
     //kernel stack segment
     for (int i = KERNEL_STACK_BASE >> PAGESHIFT; i < KERNEL_STACK_LIMIT >> PAGESHIFT; i++) {
-        ptr0[i].pfn = i;
+        ptr0[i].pfn = get_free_frame();
         ptr0[i].uprot = PROT_NONE;
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
         ptr0[i].valid = TRUE;
     }
     return ptr0;
+}
+
+/*
+ * copy 4 physical pages
+ */
+SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+    char kernel_stack_temp[KERNEL_STACK_PAGES * PAGESIZE];
+    memcpy(kernel_stack_temp, (void *)KERNEL_STACK_BASE, KERNEL_STACK_PAGES * PAGESIZE); // save to temp
+    // switch page table
+    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    memcpy((void *)KERNEL_STACK_BASE, kernel_stack_temp, KERNEL_STACK_PAGES * PAGESIZE); // copy 4 kernel stack pages
+
+    return ctxp;
+}; //TODO test only
+
+SavedContext *save_ctx(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+    char kernel_stack_temp[KERNEL_STACK_PAGES * PAGESIZE];
+    memcpy(kernel_stack_temp, (void *)KERNEL_STACK_BASE, KERNEL_STACK_PAGES * PAGESIZE);
+    WriteRegister(REG_PTR0, (RCS421RegVal)idle_pcb->ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    memcpy((void *)KERNEL_STACK_BASE, kernel_stack_temp, KERNEL_STACK_PAGES * PAGESIZE);
+
+    memcpy(init_pcb->ctx, idle_pcb->ctx, sizeof(SavedContext));
+    WriteRegister(REG_PTR0, (RCS421RegVal)init_pcb->ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    return ctxp;
 }

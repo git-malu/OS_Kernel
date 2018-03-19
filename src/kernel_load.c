@@ -61,9 +61,9 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
     /*
      * Lu Ma: initialization
      */
-    RCS421RegVal save = ReadRegister(REG_PTR0);
-    struct pte *ptr0 = target_process -> ptr0;
-    WriteRegister(REG_PTR0, (RCS421RegVal) ptr0);
+    struct pte *ptr0 = (struct pte *) ReadRegister(REG_PTR0);// read() will use the current ptr0 in the register!
+//    struct pte *ptr0 = target_process -> ptr0;
+//    WriteRegister(REG_PTR0, (RCS421RegVal) ptr0);
 
     TracePrintf(0, "LoadProgram '%s', args %p\n", name, args);
 
@@ -168,7 +168,6 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
     //count the number of physical frame to be freed from user process.
 
 
-
     int to_be_freed = 0; //number of physical frames to be freed
     for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
         if (ptr0[i].valid == 1) {
@@ -189,7 +188,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 //    >>>> The value of cpp was initialized above.
 
     ex_info -> sp = cpp; // set the initial position of stack pointer
-    TracePrintf(0, "Initialize sp to cpp %d\n", cpp);
+    TracePrintf(4, "LoadProgram: Initialize sp to cpp %d\n", cpp);
 
     /*
      *  Free all the old physical memory belonging to this process,
@@ -202,7 +201,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 //    >>>> any of these PTEs that are valid, free the physical memory
 //    >>>> memory page indicated by that PTE's pfn field.  Set all
 //    >>>> of these PTEs to be no longer valid.
-    TracePrintf(0, "free the old physical memory, but keep the kernel stack.\n");
+    TracePrintf(4, "LoadProgram: free the old physical memory, but keep the kernel stack.\n");
     //still keep the kernel stack
     for (int i = 0; i < PAGE_TABLE_LEN - KERNEL_STACK_PAGES; i++) {
         //free physical frames and set them invalid
@@ -222,7 +221,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 
 //    >>>> Leave the first MEM_INVALID_PAGES number of PTEs in the
 //    >>>> Region 0 page table unused (and thus invalid)
-    TracePrintf(0, "Set MEM_INVALID_PAGES number of PTEs to invalid\n");
+    TracePrintf(4, "LoadProgram: Set MEM_INVALID_PAGES number of PTEs to invalid\n");
     for (int i = 0; i < MEM_INVALID_PAGES; i++) {
         ptr0[i].valid = 0;
     }
@@ -234,7 +233,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 //    >>>>     kprot = PROT_READ | PROT_WRITE
 //    >>>>     uprot = PROT_READ | PROT_EXEC
 //    >>>>     pfn   = a new page of physical memory
-    TracePrintf(0, "Set the PTEs for the text_npg.\n");
+    TracePrintf(4, "LoadProgram: Set the PTEs for the text_npg.\n");
     for (int i = MEM_INVALID_PAGES; i < MEM_INVALID_PAGES + text_npg; i++) {
         ptr0[i].valid = 1;
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
@@ -249,7 +248,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 //    >>>>     kprot = PROT_READ | PROT_WRITE
 //    >>>>     uprot = PROT_READ | PROT_WRITE
 //    >>>>     pfn   = a new page of physical memory
-    TracePrintf(0, "Set the PTEs for the data_bss_npg.\n");
+    TracePrintf(4, "LoadProgram: Set the PTEs for the data_bss_npg.\n");
     for (int i = MEM_INVALID_PAGES + text_npg; i <  MEM_INVALID_PAGES + text_npg + data_bss_npg; i++) {
         ptr0[i].valid = 1;
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
@@ -266,7 +265,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 //    >>>>     kprot = PROT_READ | PROT_WRITE
 //    >>>>     uprot = PROT_READ | PROT_WRITE
 //    >>>>     pfn   = a new page of physical memory
-    TracePrintf(0, "Set the PTEs for user stack.\n");
+    TracePrintf(4, "LoadProgram: Set the PTEs for user stack.\n");
     for (int i = (USER_STACK_LIMIT >> PAGESHIFT) - stack_npg; i < (USER_STACK_LIMIT >> PAGESHIFT); i++) {
         ptr0[i].valid = 1;
         ptr0[i].kprot = PROT_READ | PROT_WRITE;
@@ -278,13 +277,13 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
      *  the TLB to get rid of all the old PTEs from this process, so
      *  we'll be able to do the read() into the new pages below.
      */
-    TracePrintf(0, "Flush TLB for page table 0.\n");
+    TracePrintf(4, "LoadProgram: Flush TLB for page table 0.\n");
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
 
     /*
      *  Read the text and data from the file into memory.
      */
-    TracePrintf(0, "Read program from file.\n");
+    TracePrintf(4, "LoadProgram: Read program from file.\n");
     if (read(fd, (void *)MEM_INVALID_SIZE, li.text_size+li.data_size)
 	!= li.text_size+li.data_size) {
         TracePrintf(0, "LoadProgram: couldn't read for '%s'\n", name);
@@ -362,8 +361,8 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
     unsigned long brk = ((MEM_INVALID_PAGES + text_npg + data_bss_npg) * PAGESIZE);
     target_process -> brk = (void *)brk;
 
-    //recover
-    WriteRegister(REG_PTR0, save);
+//    //recover
+//    WriteRegister(REG_PTR0, save);
 
     return (0);
 }
