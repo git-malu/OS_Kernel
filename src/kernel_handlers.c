@@ -21,6 +21,7 @@ void syscall_handler(ExceptionInfo *ex_info) {
 
     switch (ex_info->code) {
         case YALNIX_FORK:
+            ex_info->regs[0] = kernel_Fork();
             break;
         case YALNIX_EXEC:
             break;
@@ -51,19 +52,22 @@ void clock_handler(ExceptionInfo *ex_info) {
     TracePrintf(2, "clock_handler is triggered. the tick count is %d.\n", robin_count);
 
     delay_list_update(); //check all the delayed processes, and move whose time's up to the ready queue
-
+    TracePrintf(0, "clock_handler: delay_list_update complete\n");
     if (++robin_count == 2) { //TODO >=2
         robin_count = 0;
         struct pcb *ready_next = pcb_queue_get(READY_QUEUE);
         if (ready_next == NULL) {
-            if (current_process->pid == 0) {
-                return;
-            } else {
-                //switch to idle
-                ContextSwitch(sw_to_idle, current_process->ctx, current_process, idle_pcb);
-            }
+            TracePrintf(0, "Lu Ma: clock handler: ready_next is NULL\n");
+//            if (current_process->pid == 0) {
+//                return;
+//            } else {
+//                //switch to idle
+//                TracePrintf(0, "Lu Ma: clock handler: switch to idle.\n");
+//                ContextSwitch(sw_to_idle, current_process->ctx, current_process, idle_pcb);
+//            }
         } else {
             //switch to next ready process
+            TracePrintf(0, "Lu Ma: clock handler: switch to next ready.\n");
             ContextSwitch(sw_to_next_ready, current_process->ctx, current_process, ready_next);
         }
     }

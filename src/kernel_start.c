@@ -8,6 +8,7 @@
 void *kernel_brk;
 void *page_table_brk = (void *)VMEM_1_LIMIT;
 int vm_enabled = FALSE;
+unsigned int pid_count = 2; //starting with 2 because 1 & 0 are assigned to init and idle
 unsigned int ff_count = 0; //free frame count
 interruptHandlerType interrupt_vector[TRAP_VECTOR_SIZE];
 struct free_frame *frame_list; //trace all the physical memory
@@ -172,7 +173,7 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
      * create init PCB
      */
     init_pcb = malloc(sizeof(struct pcb));
-//    struct free_page_table * ptttt= get_free_page_table();
+//    struct free_page_table * ptttt= alloc_free_page_table();
 //    ptr0_init = (struct pte *)(ptttt->vir_addr);//TODO test only delete later
 //    test = (struct pte *)(ptttt->phy_addr);//TODO test only delete later
 //    TracePrintf(0,"phy is %d, vir is %d.\n", test, ptr0_init);
@@ -193,7 +194,7 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     //copy 4 physical pages
 //    ContextSwitch(idle_ks_copy, malloc(sizeof(SavedContext)), idle_pcb, init_pcb);//TODO test only
 
-    current_process = init_pcb;
+
     ContextSwitch(idle_ks_copy, idle_pcb->ctx, idle_pcb, init_pcb); //TODO test!!!!!!
     if (current_process->pid == 0) {
         return; // return immediately
@@ -208,7 +209,9 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     TracePrintf(0, "Kernelstart: kernel start complete!\n");
 }
 
-
+/*
+ * allocate frames for kernel stack segment
+ */
 struct pte *initialize_ptr0(struct pte *ptr0) {
     //invalid segment
     for (int i = 0; i < MEM_INVALID_PAGES; i++) {
@@ -237,6 +240,7 @@ SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
     memcpy((void *)KERNEL_STACK_BASE, kernel_stack_temp, KERNEL_STACK_PAGES * PAGESIZE); // copy 4 kernel stack pages
     TracePrintf(0, "ctx_swtich complete.\n");
+    current_process = init_pcb;
     return ctxp;
 }; //TODO test only
 

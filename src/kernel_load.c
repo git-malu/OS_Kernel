@@ -120,7 +120,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_
 	    strcpy(cp, args[i]);
 	    cp += strlen(cp) + 1; // also give space to each '\0' by +1
     }
-  
+
     /*
      *  The arguments will get copied starting at "cp" as set below,
      *  and the argv pointers to the arguments (and the argc value)

@@ -5,10 +5,11 @@
 
 int main(int argc, char *argv[]) {
     printf("init process started! The pid is %d.\n", GetPid());
-    printf("Delay is called\n");
-    Delay(10);
-    printf("return to init process from delay");
-
+//    printf("Delay is called\n");
+    Delay(5);
+//    printf("return to init process from delay\n");
+    Fork();
+    printf("after fork, the current pid is %d.", GetPid());
 //    while (1) {
 //        Pause();
 //        printf("Now in init process. Pause is released once. The pid is %d.\n", GetPid());

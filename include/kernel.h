@@ -7,6 +7,7 @@
 extern int vm_enabled;
 extern void *kernel_brk;
 extern void *page_table_brk;
+extern unsigned int pid_count;
 extern unsigned int ff_count;
 extern struct free_frame *frame_list;
 extern struct free_page_table *page_table_list;
@@ -97,4 +98,6 @@ void pcb_queue_add(int q_name, struct pcb *target_pcb);
 struct pcb *pcb_queue_get(int q_name);
 void delay_list_add(struct pcb *delayed_process);
 void delay_list_update();
-struct free_page_table *get_free_page_table();
+struct free_page_table *alloc_free_page_table();
+struct pcb *create_pcb (struct pte *ptr0);
+RCS421RegVal vir2phy_addr(unsigned long vaddr);

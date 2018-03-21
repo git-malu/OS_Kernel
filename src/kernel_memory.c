@@ -86,6 +86,7 @@ void pcb_queue_add(int q_name, struct pcb *target_pcb) {
         queues[q_name].tail = target_pcb;
     } else {
         old_tail->next[q_name] = target_pcb;
+        target_pcb->next[q_name] = NULL;
         queues[q_name].tail = target_pcb;
     }
 }
@@ -117,10 +118,11 @@ void delay_list_add(struct pcb *delayed_process) {
  * move process from delay list to ready queue when time is up.
  */
 void delay_list_update() {
+    TracePrintf(0,"     enter the delay_list_update\n");
     struct pcb *previous = NULL;
     struct pcb *current = delay_list;
-
-    TracePrintf(0, "the current address is %d, the next address is %d!!!!!!!!!!!!!!\n", current, current->next[DELAY_LIST]);
+    TracePrintf(0,"     enter the delay_list_update 2\n");
+//    TracePrintf(0, "the current address is %d, the next address is %d!!!!!!!!!!!!!!\n", current, current->next[DELAY_LIST]);
 
     //no item
     if (delay_list == NULL) {
@@ -130,13 +132,13 @@ void delay_list_update() {
     TracePrintf(2, "Delay list update: enter loop !!!!\n");
     while (current != NULL) {
 
-        if (current->countdown == 0) {
-            TracePrintf(2, "Delay list update: in the loop, the countdown is 0 !!!!\n");
-            previous = current; //pointer advance
-            current = current->next[DELAY_LIST]; //pinter advance
-            continue;
-        }
-
+//        if (current->countdown == 0) {
+//            TracePrintf(2, "Delay list update: in the loop, the countdown is 0 !!!!\n");
+//            previous = current; //pointer advance
+//            current = current->next[DELAY_LIST]; //pointer advance
+//            continue;
+//        }
+//
         if (--(current->countdown)) {
             //not yet
             TracePrintf(2, "Delay list update: not yet, decreasing, current countdown is %d! !!!!\n", current->countdown);
@@ -144,7 +146,7 @@ void delay_list_update() {
             current = current->next[DELAY_LIST]; //pointer advance
             continue;
         } else {
-            //time's up
+            //time's up, move this process out to ready queue
             TracePrintf(2, "Delay list update: time's up, countdown becomes %d!!!!!\n", current->countdown);
             if (previous == NULL) {
                 TracePrintf(2, "Delay list update: previous is null!!!!!\n");
@@ -167,9 +169,9 @@ void delay_list_update() {
 }
 
 /*
- * get free page table
+ * get a free page table who has continuous physical address
  */
-struct free_page_table *get_free_page_table() {
+struct free_page_table *alloc_free_page_table() {
 
     if (page_table_list == NULL) {
         //set page table brk
@@ -224,8 +226,26 @@ void free_a_page_table(struct free_page_table *to_be_freed) {
 
 RCS421RegVal vir2phy_addr(unsigned long vaddr) {
     unsigned long index = (vaddr - VMEM_1_BASE) >> PAGESHIFT;
-    struct pte *ptr1 = ReadRegister(REG_PTR1);
+    struct pte *ptr1 = (struct pte *)ReadRegister(REG_PTR1);
     return (RCS421RegVal)(ptr1[index].pfn << PAGESHIFT | (vaddr & PAGEOFFSET));
+}
+
+/*
+ * create new pcb for user process
+ */
+struct pcb *create_pcb (struct pte *ptr0) {
+    struct pcb *new_pcb = malloc(sizeof(struct pcb));
+    new_pcb->ptr0 = ptr0;
+    new_pcb->pid = pid_count++;
+    new_pcb->ctx = malloc(sizeof(SavedContext));
+    new_pcb->countdown = 0;
+    new_pcb->parent = NULL;
+    new_pcb->child = NULL;
+    new_pcb->sibling = NULL;
+    for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
+        new_pcb->next[i] = NULL;
+    }
+    return new_pcb;
 }
 
 //void free_a_frame(unsigned int freed_pfn) {
