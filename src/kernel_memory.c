@@ -233,12 +233,13 @@ RCS421RegVal vir2phy_addr(unsigned long vaddr) {
 /*
  * create new pcb for user process
  */
-struct pcb *create_pcb (struct pte *ptr0) {
+struct pcb *create_pcb(struct pte *ptr0, void *brk) {
     struct pcb *new_pcb = malloc(sizeof(struct pcb));
     new_pcb->ptr0 = ptr0;
     new_pcb->pid = pid_count++;
     new_pcb->ctx = malloc(sizeof(SavedContext));
     new_pcb->countdown = 0;
+    new_pcb->brk = brk;
     new_pcb->parent = NULL;
     new_pcb->child = NULL;
     new_pcb->sibling = NULL;

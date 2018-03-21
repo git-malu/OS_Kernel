@@ -11,7 +11,7 @@ int kernel_Fork(void) {
     struct free_page_table *new_pt_node = alloc_free_page_table(); //get a new page table who has continuous physical address
     struct pte *ptr0 = new_pt_node->vir_addr;
 //    initialize_ptr0(ptr0);//allocate physical frames for kernel stack, and create corresponding pte
-    struct pcb * new_pcb = create_pcb(ptr0);//create pcb for new process
+    struct pcb * new_pcb = create_pcb(ptr0, current_process->brk);//create pcb for new process
     struct pcb *save_current_process = current_process;
     TracePrintf(0,"Lu Ma: start the context switch in the kernel_fork.\n");
     ContextSwitch(program_cpy, current_process->ctx, current_process, new_pcb);//copy program to new process, copy pte protection to new process
@@ -24,12 +24,10 @@ int kernel_Fork(void) {
 }
 
 SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
-//    char buffer[VMEM_REGION_SIZE - MEM_INVALID_SIZE];
     struct pcb *pcb_from = (struct pcb *)from;
     struct pcb *pcb_to = (struct pcb *)to;
     struct pte *src_ptr0 = pcb_from->ptr0;
     struct pte *dst_ptr0 = pcb_to->ptr0;
-//    struct pte *ptr1 = (struct pte *)ReadRegister(REG_PTR1);
     TracePrintf(0, "Lu Ma: initialize in program_cpy\n");
     //prepare address mapping for copy
     src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].valid = 1;
@@ -57,24 +55,10 @@ SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
     }
     src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].valid = 0; //recover mapping
     TracePrintf(0, "Lu Ma: start context switch (WriteRegister) in program_cpy\n");
-//    memcpy(buffer, (void *)MEM_INVALID_SIZE, VMEM_REGION_SIZE - MEM_INVALID_SIZE); //copy the whole region to buffer
     RCS421RegVal phy_addr = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
     TracePrintf(0, "Lu Ma: the phy addr of dst_ptr in program_cpy is %d.\n", phy_addr);
     WriteRegister(REG_PTR0, phy_addr);//write the physical address of page table
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-//    memcpy((void *)MEM_INVALID_SIZE, buffer, VMEM_REGION_SIZE - MEM_INVALID_SIZE);//copy the whole region from buffer to new process
-//    struct pte *ptr0_from = ((struct pcb *)from)->ptr0;
-//    struct pte *ptr0_to = ((struct pcb *)to)->ptr0;
-//
-//    //copy pte
-//    for (int i = VMEM_0_BASE; i < VMEM_REGION_SIZE; i++) {
-//        ptr0_to[i].valid = ptr0_from[i].valid;
-//        ptr0_to[i].kprot = ptr0_from[i].kprot;
-//        ptr0_to[i].uprot = ptr0_from[i].uprot;
-//    }
-
-    //copy context!
-//    memcpy(((struct pcb *)to)->ctx, ((struct pcb *)from)->ctx, sizeof(SavedContext));//TODO
 
     current_process = (struct pcb *)to;
     return ctxp;
@@ -82,15 +66,15 @@ SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
 
 int kernel_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
     TracePrintf(0, "Syscall: kernel_Exec syscall is called.\n");
-    if (verify_string(filename) < 0) {
-        return ERROR;
-    }
+//    if (verify_string(filename) < 0) {
+//        return ERROR;
+//    }
     int status = LoadProgram(filename, argvec, ex_info, current_process);
     switch (status) {
         case -1:
             return ERROR;
         case -2:
-            kernel_Exit(-2);
+            kernel_Exit(-2); //unrecoverable
         default:
             return 0;
     }
@@ -112,9 +96,27 @@ int kernel_GetPid(struct pcb *target_process) {
     return res;
 }
 
-int kernel_Brk(void *addr) {
-    TracePrintf(0, "Syscall: kernel_Brk syscall is called. System Halts.\n");
-    Halt();
+int kernel_Brk(void *addr, ExceptionInfo *ex_info) {
+    TracePrintf(0, "Syscall: kernel_Brk syscall is called. \n");
+    if (addr >= ex_info->sp) {
+        return ERROR;
+    }
+
+    if (addr > current_process->brk) {
+        //allocate memory
+        TracePrintf(0, "allocate more memory for user process. set addr to %d.\n", addr);
+        int orig_brk_index = ((unsigned long)(current_process->brk) >> PAGESHIFT);
+        int new_brk_index = (UP_TO_PAGE(addr) >> PAGESHIFT);
+        for (int i = orig_brk_index; i < new_brk_index; i++) {
+            current_process->ptr0[i].valid = 1;
+            current_process->ptr0[i].kprot = PROT_WRITE | PROT_READ;
+            current_process->ptr0[i].uprot = PROT_WRITE | PROT_READ;
+            current_process->ptr0[i].pfn = get_free_frame();
+        }
+    } else {
+        //TODO release memory
+    }
+    return 0;
 }
 
 /*

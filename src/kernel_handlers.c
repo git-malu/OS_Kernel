@@ -24,6 +24,7 @@ void syscall_handler(ExceptionInfo *ex_info) {
             ex_info->regs[0] = kernel_Fork();
             break;
         case YALNIX_EXEC:
+            kernel_Exec((char *)(ex_info->regs[1]), (char **)(ex_info->regs[2]), ex_info);
             break;
         case YALNIX_EXIT:
             kernel_Exit(0); //TODO should status be 0?
@@ -34,6 +35,7 @@ void syscall_handler(ExceptionInfo *ex_info) {
             ex_info->regs[0] = kernel_GetPid(current_process);
             break;
         case YALNIX_BRK:
+            kernel_Brk((void *) (ex_info->regs[1]), ex_info);
             break;
         case YALNIX_DELAY:
             kernel_Delay(ex_info->regs[1]);
@@ -79,8 +81,8 @@ SavedContext *sw_to_next_ready(SavedContext *ctxp, void *pcb_from, void *pcb_to)
     WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
     current_process = pcb_to;
-    pcb_queue_add(READY_QUEUE, pcb_from);//TODO unsure
-    TracePrintf(0, "Context swtich: clock handler: end of context switch funciton.\n");//TODO test
+    pcb_queue_add(READY_QUEUE, pcb_from); //add to the ready queue
+    TracePrintf(0, "Context swtich: clock handler: end of context switch funciton.\n"); //TODO test
     return ((struct pcb *)pcb_to)->ctx;
 };
 
