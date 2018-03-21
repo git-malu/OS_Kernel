@@ -11,7 +11,7 @@ int kernel_Fork(void) {
     struct free_page_table *new_pt_node = alloc_free_page_table(); //get a new page table who has continuous physical address
     struct pte *ptr0 = new_pt_node->vir_addr;
 //    initialize_ptr0(ptr0);//allocate physical frames for kernel stack, and create corresponding pte
-    struct pcb * new_pcb = create_pcb(ptr0, current_process->brk);//create pcb for new process
+    struct pcb * new_pcb = create_child_pcb(ptr0, current_process);//create pcb for new process
     struct pcb *save_current_process = current_process;
     TracePrintf(0,"Lu Ma: start the context switch in the kernel_fork.\n");
     ContextSwitch(program_cpy, current_process->ctx, current_process, new_pcb);//copy program to new process, copy pte protection to new process
@@ -19,7 +19,7 @@ int kernel_Fork(void) {
     if (current_process->pid == save_current_process->pid) {
         return new_pcb->pid;//Now I'm parent
     } else {
-        return 0;//Now I'm child TODO check
+        return 0;//Now I'm child_list TODO check
     }
 }
 
@@ -28,12 +28,14 @@ SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
     struct pcb *pcb_to = (struct pcb *)to;
     struct pte *src_ptr0 = pcb_from->ptr0;
     struct pte *dst_ptr0 = pcb_to->ptr0;
-    TracePrintf(0, "Lu Ma: initialize in program_cpy\n");
+//    //
+//    pcb_to->parent = pcb_from;
+
     //prepare address mapping for copy
     src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].valid = 1;
     src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].kprot = PROT_READ | PROT_WRITE;
     src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].uprot = PROT_NONE;
-    TracePrintf(0, "Lu Ma: start looping in program_cpy\n");
+
     //start copy page by page
     for (int i = 0; i < PAGE_TABLE_LEN; i++) {
         if (i == USER_STACK_LIMIT >> PAGESHIFT) {
@@ -81,7 +83,9 @@ int kernel_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
 }
 
 void kernel_Exit(int status) {
-    TracePrintf(0, "Syscall: kernel_Exit syscall is called. System Halts.\n");
+    TracePrintf(0, "Syscall: kernel_Exit syscall is called. \n");
+    current_process->exit_status = status;
+    struct dequeue *ready_queue =
     Halt();
 }
 

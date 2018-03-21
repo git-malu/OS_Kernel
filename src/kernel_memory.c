@@ -77,8 +77,15 @@ void free_a_frame(unsigned int freed_pfn) {
 
 
 
-
+/*
+ * add to a pcb queue
+ * target_pcb is the pcb you want to add to a queue
+ */
 void pcb_queue_add(int q_name, struct pcb *target_pcb) {
+    if (q_name == EXIT_QUEUE) {
+        //we need to find the corresponding parent of the exit queue
+        queues[q_name] = target_pcb->parent->exit_queue;
+    }
     struct pcb *old_head = queues[q_name].head;
     struct pcb *old_tail = queues[q_name].tail;
     if (old_head == NULL) {
@@ -89,28 +96,48 @@ void pcb_queue_add(int q_name, struct pcb *target_pcb) {
         target_pcb->next[q_name] = NULL;
         queues[q_name].tail = target_pcb;
     }
+
 }
 
-struct pcb *pcb_queue_get(int q_name) {
+/*
+ * get from a pcb queue
+ * target_pcb is whose queue you want to get a pcb from.
+ * If you want to get from a global queue, set target_pcb to NULL and provide only global queue name.
+ */
+struct pcb *pcb_queue_get(int q_name, struct pcb *target_pcb) {
+    struct pcb *res;
+    if (target_pcb != NULL) {
+        if (q_name == EXIT_QUEUE) {
+            queues[q_name] = target_pcb->exit_queue;
+        }
+    }
+
     struct pcb *old_head = queues[q_name].head;
     struct pcb *old_tail = queues[q_name].tail;
     if (old_head == NULL) {
-        return NULL;
+        res = NULL;
     } else if (old_head == old_tail) {
         queues[q_name].head = NULL;
         queues[q_name].tail = NULL;
-        return old_head;
+        res = old_head;
     } else {
         queues[q_name].head = old_head->next[q_name];
         old_head->next[q_name] = NULL;
-        return old_head;
+        res = old_head;
     }
+
+    if (target_pcb != NULL) {
+        if (q_name == EXIT_QUEUE) {
+            target_pcb->exit_queue = queues[q_name];
+        }
+    }
+    return res;
 }
 
 void delay_list_add(struct pcb *delayed_process) {
-    struct pcb *old_head = delay_list;
+//    struct pcb *old_head = delay_list;
     TracePrintf(0, "debug: delay list add: the delay_list initial content was NULL? %d\n", delay_list);
-    delayed_process->next[DELAY_LIST] = old_head;
+    delayed_process->next[DELAY_LIST] = delay_list;
     delay_list = delayed_process;
 }
 
@@ -233,20 +260,36 @@ RCS421RegVal vir2phy_addr(unsigned long vaddr) {
 /*
  * create new pcb for user process
  */
-struct pcb *create_pcb(struct pte *ptr0, void *brk) {
+struct pcb *create_child_pcb(struct pte *ptr0, struct pcb *parent) {
     struct pcb *new_pcb = malloc(sizeof(struct pcb));
     new_pcb->ptr0 = ptr0;
     new_pcb->pid = pid_count++;
     new_pcb->ctx = malloc(sizeof(SavedContext));
     new_pcb->countdown = 0;
-    new_pcb->brk = brk;
-    new_pcb->parent = NULL;
-    new_pcb->child = NULL;
-    new_pcb->sibling = NULL;
+    new_pcb->brk = parent->brk;
+    new_pcb->parent = parent; //set parent
+    new_pcb->child_list = NULL;
+    new_pcb->exit_status = 1;
+    new_pcb->exit_queue = (struct dequeue) {NULL, NULL};
+
+    pcb_list_add(CHILD_LIST, new_pcb); //record new pcb as a child of parent
+
+    //initialize all the "next"s
     for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
         new_pcb->next[i] = NULL;
     }
+
     return new_pcb;
+}
+
+/*
+ * target_pcb is the pcb you want to add to a pcb list
+ */
+void pcb_list_add(int list_name, struct pcb* target_pcb) {
+    if (list_name == CHILD_LIST) {
+        target_pcb->next[SIBLING_LIST] = target_pcb->parent->child_list;
+        target_pcb->parent->child_list = target_pcb;
+    }
 }
 
 //void free_a_frame(unsigned int freed_pfn) {

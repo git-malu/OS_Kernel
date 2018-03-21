@@ -1,5 +1,5 @@
 #define NUM_QUEUES 1
-#define NUM_LISTS 1
+#define NUM_LISTS 2
 
 /*
  * global variables
@@ -25,7 +25,8 @@ extern struct dequeue {
  * constants
  */
 enum boolean {FALSE, TRUE};
-enum list_type {READY_QUEUE, DELAY_LIST}; //queues come first, then list follows
+enum list_type {READY_QUEUE, EXIT_QUEUE, DELAY_LIST, CHILD_LIST, SIBLING_LIST}; //queues come first, then list follows
+
 /*
  * System calls
  */
@@ -60,11 +61,13 @@ struct pcb {
     void *brk;
     SavedContext *ctx;
     int countdown; //clock
+    int exit_status;
 
     //relations
     struct pcb *parent;
-    struct pcb *child;
-    struct pcb *sibling;
+    struct pcb *child_list; //every pcb has a child_list
+    struct dequeue exit_queue; //every pcb has a exit queue for collecting children's exit status
+//    struct pcb *sibling;
     struct pcb *next[NUM_QUEUES + NUM_LISTS];//
 };
 
@@ -95,9 +98,10 @@ unsigned int get_free_frame();
 int LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_process);
 struct pte *initialize_ptr0(struct pte *ptr0);
 void pcb_queue_add(int q_name, struct pcb *target_pcb);
-struct pcb *pcb_queue_get(int q_name);
+struct pcb *pcb_queue_get(int q_name, struct pcb *target_pcb);
 void delay_list_add(struct pcb *delayed_process);
 void delay_list_update();
 struct free_page_table *alloc_free_page_table();
-struct pcb *create_pcb(struct pte *ptr0, void *brk);
+struct pcb *create_child_pcb(struct pte *ptr0, struct pcb *parent);
 RCS421RegVal vir2phy_addr(unsigned long vaddr);
+void pcb_list_add(int list_name, struct pcb* target_pcb);

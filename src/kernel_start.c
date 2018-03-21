@@ -149,9 +149,11 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     idle_pcb->ptr0 = ptr0_idle;
     idle_pcb->ctx = malloc(sizeof(SavedContext));
     idle_pcb->countdown = 0;
-    idle_pcb->child = NULL;
+    idle_pcb->child_list = NULL;
     idle_pcb->parent = NULL;
-    idle_pcb->sibling = NULL;
+    idle_pcb->exit_queue = (struct dequeue) {NULL, NULL};
+    idle_pcb->exit_status = 1;
+//    idle_pcb->sibling = NULL;
     for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
         idle_pcb->next[i] = NULL;
     }
@@ -182,8 +184,10 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     init_pcb->ctx = malloc(sizeof(SavedContext));
     init_pcb->countdown = 0;
     init_pcb->parent = NULL;
-    init_pcb->child = NULL;
-    init_pcb->sibling = NULL;
+    init_pcb->child_list = NULL;
+    init_pcb->exit_queue = (struct dequeue) {NULL, NULL};
+    init_pcb->exit_status = 1;
+//    init_pcb->sibling = NULL;
     for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
         init_pcb->next[i] = NULL;
     }
