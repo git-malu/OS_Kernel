@@ -18,7 +18,7 @@ extern struct pcb *delay_list;
 extern struct dequeue {
     struct pcb *head;
     struct pcb *tail;
-} queues[];
+} *queues[];
 
 
 /*
@@ -66,7 +66,7 @@ struct pcb {
     //relations
     struct pcb *parent;
     struct pcb *child_list; //every pcb has a child_list
-    struct dequeue exit_queue; //every pcb has a exit queue for collecting children's exit status
+    struct dequeue *exit_queue; //every pcb has a exit queue for collecting children's exit status
 //    struct pcb *sibling;
     struct pcb *next[NUM_QUEUES + NUM_LISTS];//
 };
@@ -105,3 +105,4 @@ struct free_page_table *alloc_free_page_table();
 struct pcb *create_child_pcb(struct pte *ptr0, struct pcb *parent);
 RCS421RegVal vir2phy_addr(unsigned long vaddr);
 void pcb_list_add(int list_name, struct pcb* target_pcb);
+struct dequeue *alloc_dequeue();

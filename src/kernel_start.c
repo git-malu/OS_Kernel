@@ -16,16 +16,15 @@ struct free_page_table *page_table_list;
 struct pcb *current_process;
 struct pcb *idle_pcb;
 struct pcb *init_pcb;
-struct dequeue queues[NUM_QUEUES];
+struct dequeue *queues[NUM_QUEUES];
 struct pcb *delay_list;
+
 /////////////
 struct pte *ptr0_idle;
 struct pte *ptr0_init;
 
 
 SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to);
-//SavedContext *save_ctx(SavedContext *ctxp, void *pcb_from, void *pcb_to);
-//SavedContext *do_nothing(SavedContext *ctxp, void *pcb_from, void *pcb_to) { return ctxp;};
 
 void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **cmd_args) {
     kernel_brk = (void *) UP_TO_PAGE(orig_brk); //round up and save kernel_brk
@@ -134,9 +133,11 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     /*
      * process scheduling queue initialization
      */
+
     for (int i = 0; i < NUM_QUEUES; i++) {
-        queues[i].head = NULL;
-        queues[i].tail = NULL;
+        queues[i] = malloc(sizeof(struct dequeue));
+        (*queues[i]).head = NULL;
+        (*queues[i]).tail = NULL;
     }
     delay_list = NULL;
 
@@ -151,8 +152,8 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     idle_pcb->countdown = 0;
     idle_pcb->child_list = NULL;
     idle_pcb->parent = NULL;
-    idle_pcb->exit_queue = (struct dequeue) {NULL, NULL};
-    idle_pcb->exit_status = 1;
+    idle_pcb->exit_queue = alloc_dequeue();//allocate initialized dequeue
+    idle_pcb->exit_status = 0;
 //    idle_pcb->sibling = NULL;
     for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
         idle_pcb->next[i] = NULL;
@@ -185,8 +186,8 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     init_pcb->countdown = 0;
     init_pcb->parent = NULL;
     init_pcb->child_list = NULL;
-    init_pcb->exit_queue = (struct dequeue) {NULL, NULL};
-    init_pcb->exit_status = 1;
+    init_pcb->exit_queue = alloc_dequeue();//allocate initialized dequeue
+    init_pcb->exit_status = 0;
 //    init_pcb->sibling = NULL;
     for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
         init_pcb->next[i] = NULL;
@@ -248,15 +249,4 @@ SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
     return ctxp;
 }; //TODO test only
 
-//SavedContext *save_ctx(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
-//    char kernel_stack_temp[KERNEL_STACK_PAGES * PAGESIZE];
-//    memcpy(kernel_stack_temp, (void *)KERNEL_STACK_BASE, KERNEL_STACK_PAGES * PAGESIZE);
-//    WriteRegister(REG_PTR0, (RCS421RegVal)idle_pcb->ptr0);
-//    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-//    memcpy((void *)KERNEL_STACK_BASE, kernel_stack_temp, KERNEL_STACK_PAGES * PAGESIZE);
-//
-//    memcpy(init_pcb->ctx, idle_pcb->ctx, sizeof(SavedContext));
-//    WriteRegister(REG_PTR0, (RCS421RegVal)init_pcb->ptr0);
-//    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-//    return ctxp;
-//}
+

@@ -5,6 +5,8 @@
 
 SavedContext *delay_to_idle(SavedContext *, void *, void *);
 SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to);
+SavedContext *to_idle(SavedContext *ctxp, void *from, void *to);
+SavedContext *to_next_ready(SavedContext *ctxp, void *from, void *to);
 
 int kernel_Fork(void) {
     TracePrintf(0, "Syscall: kernel_Fork syscall is called.\n");
@@ -85,9 +87,44 @@ int kernel_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
 void kernel_Exit(int status) {
     TracePrintf(0, "Syscall: kernel_Exit syscall is called. \n");
     current_process->exit_status = status;
-    struct dequeue *ready_queue =
-    Halt();
+    // set all children's parent to null
+    struct pcb *head = current_process->child_list;
+    while (head != NULL) {
+        head->parent = NULL;
+        head = head->next[SIBLING_LIST];
+    }
+
+    // add to current process's parent exit queue
+    pcb_queue_add(EXIT_QUEUE, current_process);
+
+    //context switch
+    struct pcb *next_ready_pcb = pcb_queue_get(READY_QUEUE, NULL);
+    if (next_ready_pcb == NULL) {
+        //go to idle
+        ContextSwitch(to_idle, current_process->ctx, current_process, idle_pcb);
+    } else {
+        //go to next ready
+        ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready_pcb);
+    }
+
 }
+
+SavedContext *to_idle(SavedContext *ctxp, void *from, void *to){
+    RCS421RegVal phy_addr_ptr0 = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
+    WriteRegister(REG_PTR0, phy_addr_ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    current_process = (struct pcb *)to;
+    return ((struct pcb *)to)->ctx;
+}
+
+SavedContext *to_next_ready(SavedContext *ctxp, void *from, void *to){
+    RCS421RegVal phy_addr_ptr0 = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
+    WriteRegister(REG_PTR0, phy_addr_ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    current_process = (struct pcb *)to;
+    return ((struct pcb *)to)->ctx;
+}
+
 
 int kernel_Wait(int *status_ptr) {
     TracePrintf(0, "Syscall: kernel_Wait syscall is called. System Halts.\n");

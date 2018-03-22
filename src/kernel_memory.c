@@ -82,20 +82,31 @@ void free_a_frame(unsigned int freed_pfn) {
  * target_pcb is the pcb you want to add to a queue
  */
 void pcb_queue_add(int q_name, struct pcb *target_pcb) {
+    //set global queue
     if (q_name == EXIT_QUEUE) {
-        //we need to find the corresponding parent of the exit queue
+        //we will find the corresponding parent of the exit queue
+        if (target_pcb->parent == NULL) {
+            return; //if no parent, just discard.
+        }
         queues[q_name] = target_pcb->parent->exit_queue;
     }
-    struct pcb *old_head = queues[q_name].head;
-    struct pcb *old_tail = queues[q_name].tail;
+
+    struct pcb *old_head = (*queues[q_name]).head;
+    struct pcb *old_tail = (*queues[q_name]).tail;
     if (old_head == NULL) {
-        queues[q_name].head = target_pcb;
-        queues[q_name].tail = target_pcb;
+        (*queues[q_name]).head = target_pcb;
+        (*queues[q_name]).tail = target_pcb;
     } else {
         old_tail->next[q_name] = target_pcb;
         target_pcb->next[q_name] = NULL;
-        queues[q_name].tail = target_pcb;
+        (*queues[q_name]).tail = target_pcb;
     }
+
+//    //update non-global queue
+//    if (q_name == EXIT_QUEUE) {
+//        //we need to find the corresponding parent of the exit queue
+//        target_pcb->parent->exit_queue = queues[q_name];
+//    }
 
 }
 
@@ -106,31 +117,33 @@ void pcb_queue_add(int q_name, struct pcb *target_pcb) {
  */
 struct pcb *pcb_queue_get(int q_name, struct pcb *target_pcb) {
     struct pcb *res;
+    //set global queue
     if (target_pcb != NULL) {
         if (q_name == EXIT_QUEUE) {
             queues[q_name] = target_pcb->exit_queue;
         }
     }
 
-    struct pcb *old_head = queues[q_name].head;
-    struct pcb *old_tail = queues[q_name].tail;
+    struct pcb *old_head = (*queues[q_name]).head;
+    struct pcb *old_tail = (*queues[q_name]).tail;
     if (old_head == NULL) {
         res = NULL;
     } else if (old_head == old_tail) {
-        queues[q_name].head = NULL;
-        queues[q_name].tail = NULL;
+        (*queues[q_name]).head = NULL;
+        (*queues[q_name]).tail = NULL;
         res = old_head;
     } else {
-        queues[q_name].head = old_head->next[q_name];
+        (*queues[q_name]).head = old_head->next[q_name];
         old_head->next[q_name] = NULL;
         res = old_head;
     }
 
-    if (target_pcb != NULL) {
-        if (q_name == EXIT_QUEUE) {
-            target_pcb->exit_queue = queues[q_name];
-        }
-    }
+//    //update non-global queue
+//    if (target_pcb != NULL) {
+//        if (q_name == EXIT_QUEUE) {
+//            target_pcb->exit_queue = queues[q_name];
+//        }
+//    }
     return res;
 }
 
@@ -269,8 +282,8 @@ struct pcb *create_child_pcb(struct pte *ptr0, struct pcb *parent) {
     new_pcb->brk = parent->brk;
     new_pcb->parent = parent; //set parent
     new_pcb->child_list = NULL;
-    new_pcb->exit_status = 1;
-    new_pcb->exit_queue = (struct dequeue) {NULL, NULL};
+    new_pcb->exit_status = 0;
+    new_pcb->exit_queue = alloc_dequeue();//allocate initialized dequeue
 
     pcb_list_add(CHILD_LIST, new_pcb); //record new pcb as a child of parent
 
@@ -292,6 +305,12 @@ void pcb_list_add(int list_name, struct pcb* target_pcb) {
     }
 }
 
+struct dequeue *alloc_dequeue() {
+    struct dequeue *res = malloc(sizeof(struct dequeue));
+    res->head = NULL;
+    res->tail = NULL;
+    return res;
+}
 //void free_a_frame(unsigned int freed_pfn) {
 //    struct free_frame *previous = NULL;
 //    struct free_frame *current = frame_list;
