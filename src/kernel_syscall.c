@@ -13,7 +13,7 @@ int kernel_Fork(void) {
     struct free_page_table *new_pt_node = alloc_free_page_table(); //get a new page table who has continuous physical address
     struct pte *ptr0 = new_pt_node->vir_addr;
 //    initialize_ptr0(ptr0);//allocate physical frames for kernel stack, and create corresponding pte
-    struct pcb * new_pcb = create_child_pcb(ptr0, current_process);//create pcb for new process
+    struct pcb * new_pcb = create_child_pcb(ptr0, current_process);//create pcb for new process, initialize using parent info
     struct pcb *save_current_process = current_process;
     TracePrintf(0,"Lu Ma: start the context switch in the kernel_fork.\n");
     ContextSwitch(program_cpy, current_process->ctx, current_process, new_pcb);//copy program to new process, copy pte protection to new process
@@ -58,21 +58,19 @@ SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
         }
     }
     src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].valid = 0; //recover mapping
-    TracePrintf(0, "Lu Ma: start context switch (WriteRegister) in program_cpy\n");
+//    TracePrintf(0, "Lu Ma: start context switch (WriteRegister) in program_cpy\n");
     RCS421RegVal phy_addr = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
-    TracePrintf(0, "Lu Ma: the phy addr of dst_ptr in program_cpy is %d.\n", phy_addr);
+//    TracePrintf(0, "Lu Ma: the phy addr of dst_ptr in program_cpy is %d.\n", phy_addr);
     WriteRegister(REG_PTR0, phy_addr);//write the physical address of page table
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
 
+    pcb_queue_add(READY_QUEUE, pcb_from);// add 'from' to ready queue.
     current_process = (struct pcb *)to;
     return ctxp;
 }
 
 int kernel_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
     TracePrintf(0, "Syscall: kernel_Exec syscall is called.\n");
-//    if (verify_string(filename) < 0) {
-//        return ERROR;
-//    }
     int status = LoadProgram(filename, argvec, ex_info, current_process);
     switch (status) {
         case -1:
@@ -83,15 +81,42 @@ int kernel_Exec(char *filename, char **argvec, ExceptionInfo *ex_info) {
             return 0;
     }
 }
-
+/*
+ * current process exits
+ */
 void kernel_Exit(int status) {
     TracePrintf(0, "Syscall: kernel_Exit syscall is called. \n");
     current_process->exit_status = status;
-    // set all children's parent to null
+    // because this process as parent is exiting, set all children's parent field to null
     struct pcb *head = current_process->child_list;
     while (head != NULL) {
         head->parent = NULL;
         head = head->next[SIBLING_LIST];
+    }
+
+    //remove this process from its parent's child list
+    if (current_process->parent != NULL) {
+        struct pcb *previous = NULL;
+        struct pcb *current = current_process->parent->child_list;
+
+        while (current != NULL) {
+            if (current == current_process) {
+                //if found
+                if (previous == NULL) {
+                    current_process->parent->child_list = current->next[SIBLING_LIST];
+                    current->next[SIBLING_LIST] = NULL;
+                } else {
+                    previous->next[SIBLING_LIST] = current->next[SIBLING_LIST];
+                    current->next[SIBLING_LIST] = NULL;
+                }
+                break;
+
+            } else {
+                //if not found, advance
+                previous = current;
+                current = current->next[SIBLING_LIST];
+            }
+        }
     }
 
     // add to current process's parent exit queue
@@ -101,9 +126,11 @@ void kernel_Exit(int status) {
     struct pcb *next_ready_pcb = pcb_queue_get(READY_QUEUE, NULL);
     if (next_ready_pcb == NULL) {
         //go to idle
+        TracePrintf(0, "the next_ready_pcb is NULL, so switch to idle.\n");
         ContextSwitch(to_idle, current_process->ctx, current_process, idle_pcb);
     } else {
         //go to next ready
+        TracePrintf(0, "the next_ready_pcb is not NULL, so switch to next ready pcb. its pid is %d\n", next_ready_pcb->pid);
         ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready_pcb);
     }
 
@@ -125,11 +152,36 @@ SavedContext *to_next_ready(SavedContext *ctxp, void *from, void *to){
     return ((struct pcb *)to)->ctx;
 }
 
-
+/*
+ * return the pid of the exit child
+ * store child's status to *status_ptr
+ */
 int kernel_Wait(int *status_ptr) {
-    TracePrintf(0, "Syscall: kernel_Wait syscall is called. System Halts.\n");
-    Halt();
+    TracePrintf(0, "Syscall: kernel_Wait syscall is called.\n");
+    if (current_process->child_list == NULL) {
+        //no children
+        return ERROR;
+    }
+
+    struct pcb *exit_pcb = pcb_queue_get(EXIT_QUEUE, current_process);
+    if (exit_pcb == NULL) {
+        pcb_list_add(WAIT_LIST, current_process); //add current process to wait list to wait for a child to exit
+        struct pcb *next_ready_pcb = pcb_queue_get(READY_QUEUE, NULL);
+        if (next_ready_pcb == NULL) {
+            //go to idle
+            ContextSwitch(to_idle, current_process->ctx, current_process, idle_pcb);
+        } else {
+            //go the next ready
+            ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready_pcb);
+        }
+        exit_pcb = pcb_queue_get(EXIT_QUEUE, current_process);
+    }
+
+    //when come back from wait list
+    *status_ptr = exit_pcb->exit_status;
+    return exit_pcb->pid;
 }
+
 
 int kernel_GetPid(struct pcb *target_process) {
     unsigned int res = target_process->pid;
@@ -169,7 +221,8 @@ int kernel_Delay(int clock_ticks) {
         return 0;//return immediately
     }
     current_process->countdown = clock_ticks;
-    delay_list_add(current_process); // add to delay list
+//    delay_list_add(current_process); // add to delay list
+    pcb_list_add(DELAY_LIST, current_process); //add to delay list
     ContextSwitch(delay_to_idle, current_process->ctx, current_process, idle_pcb);
     return 0;
 }

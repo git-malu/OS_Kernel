@@ -147,12 +147,7 @@ struct pcb *pcb_queue_get(int q_name, struct pcb *target_pcb) {
     return res;
 }
 
-void delay_list_add(struct pcb *delayed_process) {
-//    struct pcb *old_head = delay_list;
-    TracePrintf(0, "debug: delay list add: the delay_list initial content was NULL? %d\n", delay_list);
-    delayed_process->next[DELAY_LIST] = delay_list;
-    delay_list = delayed_process;
-}
+
 
 /*
  * move process from delay list to ready queue when time is up.
@@ -160,12 +155,12 @@ void delay_list_add(struct pcb *delayed_process) {
 void delay_list_update() {
     TracePrintf(0,"     enter the delay_list_update\n");
     struct pcb *previous = NULL;
-    struct pcb *current = delay_list;
+    struct pcb *current = lists[DELAY_LIST];
     TracePrintf(0,"     enter the delay_list_update 2\n");
 //    TracePrintf(0, "the current address is %d, the next address is %d!!!!!!!!!!!!!!\n", current, current->next[DELAY_LIST]);
 
     //no item
-    if (delay_list == NULL) {
+    if (lists[DELAY_LIST] == NULL) {
         TracePrintf(2, "Delay list update: there is no item in this list.\n");
         return;
     }
@@ -186,14 +181,14 @@ void delay_list_update() {
             current = current->next[DELAY_LIST]; //pointer advance
             continue;
         } else {
-            //time's up, move this process out to ready queue
+            //time's up, move this process from delay list to ready queue
             TracePrintf(2, "Delay list update: time's up, countdown becomes %d!!!!!\n", current->countdown);
             if (previous == NULL) {
                 TracePrintf(2, "Delay list update: previous is null!!!!!\n");
                 struct pcb *new_head = current->next[DELAY_LIST];
                 current->next[DELAY_LIST] = NULL;
                 pcb_queue_add(READY_QUEUE, current); // add to ready queue
-                delay_list = new_head;
+                lists[DELAY_LIST] = new_head;
                 current = new_head; // current is updated
             } else {
                 TracePrintf(2, "Delay list update: previous is not null!!!!!\n");
@@ -206,6 +201,37 @@ void delay_list_update() {
         }
     }
     TracePrintf(2, "Delay list update: delay list udpate complete.\n");
+}
+/*
+ * traverse all items
+ */
+void wait_list_update() {
+    struct pcb *previous = NULL;
+    struct pcb *current = lists[WAIT_LIST];
+    while (current != NULL) {
+        if (current->exit_queue->head == NULL) {
+            //if not found, advance
+            previous = current;
+            current = current->next[WAIT_LIST];
+        } else {
+            //if found, remove and advance
+            if (previous == NULL) {
+                //add to ready queue
+                pcb_queue_add(READY_QUEUE, current);
+                //remove and advance
+                lists[WAIT_LIST] = current->next[WAIT_LIST];
+                current->next[WAIT_LIST] = NULL;
+                current = lists[WAIT_LIST];//advance
+            } else {
+                //add to ready queue
+                pcb_queue_add(READY_QUEUE, current);
+                //remove and advance
+                previous->next[WAIT_LIST] = current->next[WAIT_LIST];
+                current->next[WAIT_LIST] = NULL;
+                current = previous->next[WAIT_LIST];
+            }
+        }
+    }
 }
 
 /*
@@ -295,14 +321,28 @@ struct pcb *create_child_pcb(struct pte *ptr0, struct pcb *parent) {
     return new_pcb;
 }
 
+//void delay_list_add(struct pcb *delayed_process) {
+////    struct pcb *old_head = delay_list;
+//    TracePrintf(0, "debug: delay list add: the delay_list initial content was NULL? %d\n", lists[DELAY_LIST]);
+//    delayed_process->next[DELAY_LIST] = lists[DELAY_LIST];
+//    lists[DELAY_LIST] = delayed_process;
+//}
+
 /*
  * target_pcb is the pcb you want to add to a pcb list
  */
 void pcb_list_add(int list_name, struct pcb* target_pcb) {
+    //non-global list
     if (list_name == CHILD_LIST) {
+        //add the target_pcb as a child
         target_pcb->next[SIBLING_LIST] = target_pcb->parent->child_list;
         target_pcb->parent->child_list = target_pcb;
+        return;
     }
+
+    //global list
+    target_pcb->next[list_name] = lists[list_name];
+    lists[list_name] = target_pcb;
 }
 
 struct dequeue *alloc_dequeue() {

@@ -9,17 +9,16 @@ int main(int argc, char *argv[]) {
     Delay(5);
 //    printf("return to init process from delay\n");
     int fork_return = Fork();
-    printf("the return of Fork is %d.\n", fork_return);
-    printf("after fork, the current pid is %d.\n", GetPid());
-    Brk((void *)(50 * PAGESIZE));
+    if (fork_return == 0) {
+        printf("the return of Fork is 0. now in child process, the pid is %d.\n", GetPid());
+    } else {
+        printf("the return of Fork is %d, now in parent process, parent pid is %d\n", fork_return, GetPid());
+    }
 
-//    while (1) {
-//        Pause();
-//        printf("Now in init process. Pause is released once. The pid is %d.\n", GetPid());
-//        ;
-//    }
-    char *s[1];
-    s[1] = NULL;
-    Exec("./src/test1", s);
-    return 0;
+//    Brk((void *)(50 * PAGESIZE));
+//    char *s[1];
+//    s[1] = NULL;
+//    Exec("./src/test1", s);
+    printf("End of program, exit. pid is %d.\n", GetPid());
+    Exit(0);
 }

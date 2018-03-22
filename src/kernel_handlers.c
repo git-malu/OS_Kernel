@@ -24,21 +24,22 @@ void syscall_handler(ExceptionInfo *ex_info) {
             ex_info->regs[0] = kernel_Fork();
             break;
         case YALNIX_EXEC:
-            kernel_Exec((char *)(ex_info->regs[1]), (char **)(ex_info->regs[2]), ex_info);
+            ex_info->regs[0] = kernel_Exec((char *)(ex_info->regs[1]), (char **)(ex_info->regs[2]), ex_info);
             break;
         case YALNIX_EXIT:
             kernel_Exit(ex_info->regs[1]);
             break;
         case YALNIX_WAIT:
+            ex_info->regs[0] = kernel_Wait(ex_info->regs[1]);
             break;
         case YALNIX_GETPID:
             ex_info->regs[0] = kernel_GetPid(current_process);
             break;
         case YALNIX_BRK:
-            kernel_Brk((void *) (ex_info->regs[1]), ex_info);
+            ex_info->regs[0] = kernel_Brk((void *) (ex_info->regs[1]), ex_info);
             break;
         case YALNIX_DELAY:
-            kernel_Delay(ex_info->regs[1]);
+            ex_info->regs[0] = kernel_Delay(ex_info->regs[1]);
             break;
         case YALNIX_TTY_READ:
             break;
@@ -52,8 +53,11 @@ void syscall_handler(ExceptionInfo *ex_info) {
 void clock_handler(ExceptionInfo *ex_info) {
     static int robin_count = 0;
     TracePrintf(2, "clock_handler is triggered. the tick count is %d.\n", robin_count);
-
+    //update
     delay_list_update(); //check all the delayed processes, and move whose time's up to the ready queue
+    wait_list_update();
+
+
     TracePrintf(0, "clock_handler: delay_list_update complete\n");
     if (++robin_count == 2) { //TODO >=2
         robin_count = 0;
@@ -81,12 +85,14 @@ void clock_handler(ExceptionInfo *ex_info) {
 }
 
 SavedContext *sw_to_next_ready(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
-    TracePrintf(0, "Context swtich: clock handler: now in my context switch function, the pcb_to is pid %d.\n", ((struct pcb *)pcb_to)->pid);
+    TracePrintf(9, "Context swtich: clock handler: now in my context switch function, the pcb_to is pid %d.\n", ((struct pcb *)pcb_to)->pid);
     WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
     current_process = pcb_to;
-    pcb_queue_add(READY_QUEUE, pcb_from); //add to the ready queue
-    TracePrintf(0, "Context swtich: clock handler: end of context switch funciton.\n"); //TODO test
+    if (((struct pcb *)pcb_from)->pid != 0) {
+        pcb_queue_add(READY_QUEUE, pcb_from); //add to the ready queue
+    }
+    TracePrintf(9, "Context swtich: clock handler: end of context switch funciton.\n"); //TODO test
     return ((struct pcb *)pcb_to)->ctx;
 };
 

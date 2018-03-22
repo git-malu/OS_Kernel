@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
-    printf("this is test1 program!\n");
+    printf("this is test1 program! the pid is %d.\n", GetPid());
+    printf("test1 program finished. exit\n");
     return 0;
 }

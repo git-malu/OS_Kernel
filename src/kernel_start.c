@@ -17,8 +17,7 @@ struct pcb *current_process;
 struct pcb *idle_pcb;
 struct pcb *init_pcb;
 struct dequeue *queues[NUM_QUEUES];
-struct pcb *delay_list;
-
+struct pcb *lists[NUM_LISTS];
 /////////////
 struct pte *ptr0_idle;
 struct pte *ptr0_init;
@@ -139,7 +138,7 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
         (*queues[i]).head = NULL;
         (*queues[i]).tail = NULL;
     }
-    delay_list = NULL;
+    lists[DELAY_LIST] = NULL;
 
 
     /*
