@@ -1,4 +1,4 @@
-#define NUM_QUEUES 2
+#define NUM_QUEUES 4
 #define NUM_LISTS 4
 
 
@@ -23,15 +23,17 @@ extern struct dequeue {
 extern struct pcb *lists[];
 extern struct terminal {
     struct pcb *process;
-    char buffer_read[TERMINAL_MAX_LINE];
-    char buffer_write[TERMINAL_MAX_LINE];
+    char read_buffer[TERMINAL_MAX_LINE];
+    char write_buffer[TERMINAL_MAX_LINE];
+    struct dequeue *write_queue;
+    struct dequeue *read_queue;
 } terminals[];
 
 /*
  * constants
  */
 enum boolean {FALSE, TRUE};
-enum list_type {READY_QUEUE, EXIT_QUEUE, DELAY_LIST, WAIT_LIST, CHILD_LIST, SIBLING_LIST}; //queues come first, then list follows
+enum list_type {READY_QUEUE, EXIT_QUEUE, READ_QUEUE, WRITE_QUEUE, DELAY_LIST, WAIT_LIST, CHILD_LIST, SIBLING_LIST}; //queues come first, then list follows
 
 /*
  * System calls
@@ -73,7 +75,6 @@ struct pcb {
     struct pcb *parent;
     struct pcb *child_list; //every pcb has a child_list
     struct dequeue *exit_queue; //every pcb has a exit queue for collecting children's exit status
-//    struct pcb *sibling;
     struct pcb *next[NUM_QUEUES + NUM_LISTS];//
 };
 
@@ -106,8 +107,8 @@ void free_a_frame(unsigned int freed_pfn);
 unsigned int get_free_frame();
 int LoadProgram(char *name, char **args, ExceptionInfo *ex_info, struct pcb *target_process);
 struct pte *initialize_ptr0(struct pte *ptr0);
-void pcb_queue_add(int q_name, struct pcb *target_pcb);
-struct pcb *pcb_queue_get(int q_name, struct pcb *target_pcb);
+void pcb_queue_add(int q_name, int tty_id, struct pcb *target_pcb);
+struct pcb *pcb_queue_get(int q_name, int tty_id, struct pcb *target_pcb);
 //void delay_list_add(struct pcb *delayed_process);
 void delay_list_update();
 struct free_page_table *alloc_free_page_table();
@@ -115,4 +116,5 @@ struct pcb *create_child_pcb(struct pte *ptr0, struct pcb *parent);
 RCS421RegVal vir2phy_addr(unsigned long vaddr);
 void pcb_list_add(int list_name, struct pcb* target_pcb);
 struct dequeue *alloc_dequeue();
-int wait_list_update();
+void wait_list_update();
+void idle_or_next_ready();

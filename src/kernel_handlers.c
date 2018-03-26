@@ -13,7 +13,7 @@
 //    #define	YALNIX_TTY_READ		21
 //    #define	YALNIX_TTY_WRITE	22
 
-
+SavedContext *to_write(SavedContext *ctxp, void *from, void *to);
 
 void syscall_handler(ExceptionInfo *ex_info) {
 
@@ -59,12 +59,9 @@ void clock_handler(ExceptionInfo *ex_info) {
     delay_list_update(); //check all the delayed processes, and move whose time's up to the ready queue
     wait_list_update(); //check all the waiting processes, and move whose exit_queue's head is no longer null to the ready queue.
 
-
-
-    TracePrintf(0, "clock_handler: delay_list_update complete\n");
     if (++robin_count == 2) {
         robin_count = 0;
-        struct pcb *next_ready = pcb_queue_get(READY_QUEUE, NULL);
+        struct pcb *next_ready = pcb_queue_get(READY_QUEUE, 0, NULL);
         if (next_ready == NULL) {
             TracePrintf(0, "Lu Ma: clock handler: next_ready is NULL\n");
             //if already in idle, remain in idle
@@ -73,7 +70,7 @@ void clock_handler(ExceptionInfo *ex_info) {
         } else {
             //switch to next ready process
             if (current_process->pid != 0) {
-                pcb_queue_add(READY_QUEUE, current_process); //add to the ready queue
+                pcb_queue_add(READY_QUEUE, 0, current_process); //add to the ready queue
             }
             TracePrintf(0, "Lu Ma: clock handler: switch to next ready.\n");
             ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready);
@@ -90,7 +87,20 @@ void tty_receive_handler(ExceptionInfo *ex_info) {
 void tty_transmit_handler(ExceptionInfo *ex_info) {
     TracePrintf(0, "tty_transmit_handler is triggered.\n");
     int tty_id = ex_info->code;
-    pcb_queue_add(READY_QUEUE, terminals[tty_id].process); //put into ready queue
+    terminals[tty_id].process = NULL; // clear, not busy anymore
+    //get the write_queue continue moving
+    struct pcb *next_write = pcb_queue_get(WRITE_QUEUE, tty_id, NULL);
+    if (next_write != NULL) {
+        ContextSwitch(to_write, current_process->ctx, current_process, next_write);
+    }
+}
+
+SavedContext *to_write(SavedContext *ctxp, void *from, void *to){
+    RCS421RegVal phy_addr_ptr0 = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
+    WriteRegister(REG_PTR0, phy_addr_ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    current_process = (struct pcb *)to;
+    return ((struct pcb *)to)->ctx;
 }
 
 void illegal_handler(ExceptionInfo *ex_info) {

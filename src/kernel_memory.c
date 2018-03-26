@@ -80,26 +80,32 @@ void free_a_frame(unsigned int freed_pfn) {
 /*
  * add to a pcb queue
  * target_pcb is the pcb you want to add to a queue
+ * tty_id is for you to choose queue from different terminals, if you don't need it, just set it to 0.
  */
-void pcb_queue_add(int q_name, struct pcb *target_pcb) {
-    //set global queue
+void pcb_queue_add(int q_name, int tty_id, struct pcb *target_pcb) {
+    //set non-global queue
     if (q_name == EXIT_QUEUE) {
         //we will find the corresponding parent of the exit queue
         if (target_pcb->parent == NULL) {
             return; //if no parent, just discard.
         }
-        queues[q_name] = target_pcb->parent->exit_queue;
+        queues[q_name] = target_pcb->parent->exit_queue; //set exit queue
     }
 
-    struct pcb *old_head = (*queues[q_name]).head;
-    struct pcb *old_tail = (*queues[q_name]).tail;
+    //global queue
+    if (q_name == WRITE_QUEUE) {
+        queues[q_name] = terminals[tty_id].write_queue;
+    }
+
+    struct pcb *old_head = queues[q_name]->head;
+    struct pcb *old_tail = queues[q_name]->tail;
     if (old_head == NULL) {
-        (*queues[q_name]).head = target_pcb;
-        (*queues[q_name]).tail = target_pcb;
+        queues[q_name]->head = target_pcb;
+        queues[q_name]->tail = target_pcb;
     } else {
         old_tail->next[q_name] = target_pcb;
         target_pcb->next[q_name] = NULL;
-        (*queues[q_name]).tail = target_pcb;
+        queues[q_name]->tail = target_pcb;
     }
 
 //    //update non-global queue
@@ -112,28 +118,33 @@ void pcb_queue_add(int q_name, struct pcb *target_pcb) {
 
 /*
  * get from a pcb queue
- * target_pcb is whose queue you want to get a pcb from.
+ * target_pcb is whose queue you want to get a pcb from. such as parent's exit queue
  * If you want to get from a global queue, set target_pcb to NULL and provide only global queue name.
  */
-struct pcb *pcb_queue_get(int q_name, struct pcb *target_pcb) {
+struct pcb *pcb_queue_get(int q_name, int tty_id, struct pcb *target_pcb) {
     struct pcb *res;
-    //set global queue
+    //set non-global queue
     if (target_pcb != NULL) {
         if (q_name == EXIT_QUEUE) {
             queues[q_name] = target_pcb->exit_queue;
         }
     }
 
-    struct pcb *old_head = (*queues[q_name]).head;
-    struct pcb *old_tail = (*queues[q_name]).tail;
+    //global queue
+    if (q_name == WRITE_QUEUE) {
+        queues[q_name] = terminals[tty_id].write_queue;
+    }
+
+    struct pcb *old_head = queues[q_name]->head;
+    struct pcb *old_tail = queues[q_name]->tail;
     if (old_head == NULL) {
         res = NULL;
     } else if (old_head == old_tail) {
-        (*queues[q_name]).head = NULL;
-        (*queues[q_name]).tail = NULL;
+        queues[q_name]->head = NULL;
+        queues[q_name]->tail = NULL;
         res = old_head;
     } else {
-        (*queues[q_name]).head = old_head->next[q_name];
+        queues[q_name]->head = old_head->next[q_name];
         old_head->next[q_name] = NULL;
         res = old_head;
     }
@@ -166,13 +177,6 @@ void delay_list_update() {
     TracePrintf(2, "Delay list update: enter loop !!!!\n");
     while (current != NULL) {
 
-//        if (current->countdown == 0) {
-//            TracePrintf(2, "Delay list update: in the loop, the countdown is 0 !!!!\n");
-//            previous = current; //pointer advance
-//            current = current->next[DELAY_LIST]; //pointer advance
-//            continue;
-//        }
-//
         if (--(current->countdown)) {
             //not yet
             TracePrintf(2, "Delay list update: not yet, decreasing, current countdown is %d! !!!!\n", current->countdown);
@@ -186,14 +190,14 @@ void delay_list_update() {
                 TracePrintf(2, "Delay list update: previous is null!!!!!\n");
                 struct pcb *new_head = current->next[DELAY_LIST];
                 current->next[DELAY_LIST] = NULL;
-                pcb_queue_add(READY_QUEUE, current); // add to ready queue
+                pcb_queue_add(READY_QUEUE, 0, current); // add to ready queue
                 lists[DELAY_LIST] = new_head;
                 current = new_head; // current is updated
             } else {
                 TracePrintf(2, "Delay list update: previous is not null!!!!!\n");
                 struct pcb *new_head = current->next[DELAY_LIST];
                 current->next[DELAY_LIST] = NULL;
-                pcb_queue_add(READY_QUEUE, current); // add to ready queue
+                pcb_queue_add(READY_QUEUE, 0, current); // add to ready queue
                 previous->next[DELAY_LIST] = new_head;
                 current = new_head; // current is updated
             }
@@ -206,7 +210,7 @@ void delay_list_update() {
  * return TRUE, if found
  * reuturn FALSE, if not found
  */
-int wait_list_update() {
+void wait_list_update() {
     struct pcb *previous = NULL;
     struct pcb *current = lists[WAIT_LIST];
     while (current != NULL) {
@@ -214,25 +218,23 @@ int wait_list_update() {
             //if not found, advance
             previous = current;
             current = current->next[WAIT_LIST];
-            return FALSE;
         } else {
             //if found, remove and advance
             if (previous == NULL) {
                 //add to ready queue
-                pcb_queue_add(READY_QUEUE, current);
+                pcb_queue_add(READY_QUEUE, 0, current);
                 //remove and advance
                 lists[WAIT_LIST] = current->next[WAIT_LIST];
                 current->next[WAIT_LIST] = NULL;
                 current = lists[WAIT_LIST];//advance
             } else {
                 //add to ready queue
-                pcb_queue_add(READY_QUEUE, current);
+                pcb_queue_add(READY_QUEUE, 0, current);
                 //remove and advance
                 previous->next[WAIT_LIST] = current->next[WAIT_LIST];
                 current->next[WAIT_LIST] = NULL;
                 current = previous->next[WAIT_LIST];
             }
-            return TRUE;
         }
     }
 }
@@ -356,6 +358,7 @@ struct dequeue *alloc_dequeue() {
     res->tail = NULL;
     return res;
 }
+
 //void free_a_frame(unsigned int freed_pfn) {
 //    struct free_frame *previous = NULL;
 //    struct free_frame *current = frame_list;

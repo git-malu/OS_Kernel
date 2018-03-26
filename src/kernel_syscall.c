@@ -15,14 +15,14 @@ int kernel_Fork(void) {
     struct pcb *new_pcb = create_child_pcb(ptr0, current_process);//create pcb for new process, initialize using parent info
     struct pcb *save_current_process = current_process;
 
-    TracePrintf(0,"Lu Ma: Fork\n");
+    TracePrintf(0,"Lu Ma: Forking\n");
     ContextSwitch(program_cpy, current_process->ctx, current_process, new_pcb);//copy program to new process, copy pte protection to new process
 
     if (current_process->pid == save_current_process->pid) {
-        TracePrintf(0,"   fork return as parent.");
+        TracePrintf(0,"   fork return as parent.\n");
         return new_pcb->pid;//Now I'm parent
     } else {
-        TracePrintf(0,"   fork return as child.");
+        TracePrintf(0,"   fork return as child.\n");
         return 0;//Now I'm child_list TODO check
     }
 }
@@ -64,8 +64,8 @@ SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
     WriteRegister(REG_PTR0, phy_addr);//write the physical address of page table
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
 
-    pcb_queue_add(READY_QUEUE, pcb_from);// add 'from' to ready queue.
-    current_process = (struct pcb *)to;
+    pcb_queue_add(READY_QUEUE, 0, pcb_from);// add 'from' to ready queue.
+    current_process = (struct pcb *)to; //now in new_pcb process, that is, child process
     return ctxp;
 }
 
@@ -120,10 +120,10 @@ void kernel_Exit(int status) {
     }
 
     // add to current process's parent exit queue
-    pcb_queue_add(EXIT_QUEUE, current_process);
+    pcb_queue_add(EXIT_QUEUE, 0, current_process);
 
     //context switch
-    struct pcb *next_ready_pcb = pcb_queue_get(READY_QUEUE, NULL);
+    struct pcb *next_ready_pcb = pcb_queue_get(READY_QUEUE, 0, NULL);
     if (next_ready_pcb == NULL) {
         //go to idle
         TracePrintf(0, "the next_ready_pcb is NULL, so switch to idle.\n");
@@ -165,10 +165,10 @@ int kernel_Wait(int *status_ptr) {
         return ERROR;
     }
 
-    struct pcb *exit_pcb = pcb_queue_get(EXIT_QUEUE, current_process);
+    struct pcb *exit_pcb = pcb_queue_get(EXIT_QUEUE, 0, current_process);
     if (exit_pcb == NULL) {
         pcb_list_add(WAIT_LIST, current_process); //add current process to wait list to wait for a child to exit
-        struct pcb *next_ready_pcb = pcb_queue_get(READY_QUEUE, NULL);
+        struct pcb *next_ready_pcb = pcb_queue_get(READY_QUEUE, 0, NULL);
         if (next_ready_pcb == NULL) {
             //go to idle
             ContextSwitch(to_idle, current_process->ctx, current_process, idle_pcb);
@@ -176,7 +176,7 @@ int kernel_Wait(int *status_ptr) {
             //go the next ready
             ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready_pcb);
         }
-        exit_pcb = pcb_queue_get(EXIT_QUEUE, current_process);
+        exit_pcb = pcb_queue_get(EXIT_QUEUE, 0, current_process);
     }
 
     //when come back from wait list
@@ -225,7 +225,7 @@ int kernel_Delay(int clock_ticks) {
     current_process->countdown = clock_ticks;
 //    delay_list_add(current_process); // add to delay list
     pcb_list_add(DELAY_LIST, current_process); //add to delay list
-    struct pcb * next_ready = pcb_queue_get(READY_QUEUE, NULL);
+    struct pcb * next_ready = pcb_queue_get(READY_QUEUE, 0, NULL);
     if (next_ready == NULL) {
         //go to idle
         TracePrintf(3, "calling delay, the next ready is null.\n");
@@ -262,22 +262,29 @@ int kernel_TtyWrite(int tty_id, void *buf, int len) {
 
     TracePrintf(0, "   Syscall: kernel_TtyWrite syscall is called. the tty_id is %d\n", tty_id);
 
-    memcpy(terminals[tty_id].buffer_write, buf, len); //save the string to kernel memory
-    TracePrintf(0, "   are you busy?1\n", tty_id);
-    TtyTransmit(tty_id, terminals[tty_id].buffer_write, len); // transmit a buffer of characters
-    TracePrintf(0, "   are you busy?2\n", tty_id);
-    //store the process in the terminal array
-    terminals[tty_id].process = current_process;
-    //there is no queue for this process to join, simply switch to idle or next ready
-    struct pcb * next_ready = pcb_queue_get(READY_QUEUE, NULL);
+    if (terminals[tty_id].process != NULL) {
+        //terminal busy, add to WRITE_QUEUE
+        pcb_queue_add(WRITE_QUEUE, tty_id, current_process);
+        idle_or_next_ready(); //wait in I/O queue
+        //after come back
+    }
+    //terminal not busy
+    memcpy(terminals[tty_id].write_buffer, buf, len); //save the string to kernel memory
+    terminals[tty_id].process = current_process; // set busy
+    TtyTransmit(tty_id, terminals[tty_id].write_buffer, len); // transmit a buffer of characters
+    //transmitting, block the current process here
+    return len;
+
+}
+
+void idle_or_next_ready() {
+    struct pcb * next_ready = pcb_queue_get(READY_QUEUE, 0, NULL);
     if (next_ready == NULL) {
         //go to idle
-        TracePrintf(3, "calling ttyWrite, the next ready is null.\n");
         ContextSwitch(to_idle, current_process->ctx, current_process, idle_pcb);
     } else {
         //go to next ready
-        TracePrintf(3, "calling ttyWrite, the next ready is pid %d.\n", next_ready->pid);
         ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready);
     }
-    return len;
 }
+

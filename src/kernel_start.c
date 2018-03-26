@@ -22,7 +22,7 @@ struct pcb *lists[NUM_LISTS];
 struct pte *ptr0_idle;
 struct pte *ptr0_init;
 struct terminal terminals[NUM_TERMINALS];
-
+char kernel_stack_temp[KERNEL_STACK_PAGES * PAGESIZE];
 
 SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to);
 
@@ -135,6 +135,12 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
      */
     for (int i = 0; i < NUM_TERMINALS; i++) {
         terminals[i].process = NULL;
+        terminals[i].read_queue = malloc(sizeof(struct dequeue));
+        terminals[i].read_queue->head = NULL;
+        terminals[i].read_queue->tail = NULL;
+        terminals[i].write_queue = malloc(sizeof(struct dequeue));
+        terminals[i].write_queue->head = NULL;
+        terminals[i].write_queue->tail = NULL;
     }
 
     /*
@@ -225,7 +231,6 @@ struct pte *initialize_ptr0(struct pte *ptr0) {
  * copy 4 physical pages
  */
 SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
-    char kernel_stack_temp[KERNEL_STACK_PAGES * PAGESIZE];
     memcpy(kernel_stack_temp, (void *)KERNEL_STACK_BASE, KERNEL_STACK_PAGES * PAGESIZE); // save to temp
     // switch page table
     WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);

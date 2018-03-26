@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define	TTY_WRITE_STR(term, str) TtyWrite(term, str, strlen(str))
+char line[TERMINAL_MAX_LINE];
 //
 //#define MAX_ARGC	32
 //
@@ -87,11 +89,33 @@
 
 char *words = "hello world\n";
 int main(int argc, char *argv[]) {
+    int i;
+    int pid;
+
+    if ((pid = Fork()) < 0) {
+        fprintf(stderr, "Can't Fork!\n");
+        Exit(1);
+    }
+
+    if (pid != 0) {
+        for (i = 0; i < 50; i++) {
+            sprintf(line, "Parent line %d\n", i);
+            TtyWrite(0, line, strlen(line));
+        }
+        TracePrintf(0, "child 10 line printf complete\n");
+    } else {
+        for (i = 0; i < 50; i++) {
+            sprintf(line, "Child line %d\n", i);
+            TtyWrite(0, line, strlen(line));
+        }
+    }
+
+    Exit(0);
 //    int *status_ptr = malloc(sizeof(int));
 //    printf("init process started! The pid is %d.\n", GetPid());
 //    TtyPrintf(TTY_CONSOLE, words);
 //    Delay(5);
-    TtyWrite(TTY_CONSOLE, words, strlen(words));
+//    TtyWrite(TTY_CONSOLE, words, strlen(words));
 
 //    int fork_return = Fork();
 //    if (fork_return == 0) {
