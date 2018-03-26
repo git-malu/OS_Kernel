@@ -1,6 +1,7 @@
 #define NUM_QUEUES 2
 #define NUM_LISTS 4
 
+
 /*
  * global variables
  */
@@ -20,6 +21,11 @@ extern struct dequeue {
     struct pcb *tail;
 } *queues[];
 extern struct pcb *lists[];
+extern struct terminal {
+    struct pcb *process;
+    char buffer_read[TERMINAL_MAX_LINE];
+    char buffer_write[TERMINAL_MAX_LINE];
+} terminals[];
 
 /*
  * constants
@@ -71,6 +77,9 @@ struct pcb {
     struct pcb *next[NUM_QUEUES + NUM_LISTS];//
 };
 
+SavedContext *to_idle(SavedContext *ctxp, void *from, void *to);
+SavedContext *to_next_ready(SavedContext *ctxp, void *from, void *to);
+
 
 
 /*
@@ -106,4 +115,4 @@ struct pcb *create_child_pcb(struct pte *ptr0, struct pcb *parent);
 RCS421RegVal vir2phy_addr(unsigned long vaddr);
 void pcb_list_add(int list_name, struct pcb* target_pcb);
 struct dequeue *alloc_dequeue();
-void wait_list_update();
+int wait_list_update();

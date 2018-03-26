@@ -157,7 +157,6 @@ void delay_list_update() {
     struct pcb *previous = NULL;
     struct pcb *current = lists[DELAY_LIST];
     TracePrintf(0,"     enter the delay_list_update 2\n");
-//    TracePrintf(0, "the current address is %d, the next address is %d!!!!!!!!!!!!!!\n", current, current->next[DELAY_LIST]);
 
     //no item
     if (lists[DELAY_LIST] == NULL) {
@@ -203,9 +202,11 @@ void delay_list_update() {
     TracePrintf(2, "Delay list update: delay list udpate complete.\n");
 }
 /*
- * traverse all items
+ * check all the waiting processes, and move whose exit_queue's head is no longer null to the ready queue.
+ * return TRUE, if found
+ * reuturn FALSE, if not found
  */
-void wait_list_update() {
+int wait_list_update() {
     struct pcb *previous = NULL;
     struct pcb *current = lists[WAIT_LIST];
     while (current != NULL) {
@@ -213,6 +214,7 @@ void wait_list_update() {
             //if not found, advance
             previous = current;
             current = current->next[WAIT_LIST];
+            return FALSE;
         } else {
             //if found, remove and advance
             if (previous == NULL) {
@@ -230,6 +232,7 @@ void wait_list_update() {
                 current->next[WAIT_LIST] = NULL;
                 current = previous->next[WAIT_LIST];
             }
+            return TRUE;
         }
     }
 }
@@ -289,7 +292,9 @@ void free_a_page_table(struct free_page_table *to_be_freed) {
     page_table_list = to_be_freed;
 }
 
-
+/*
+ * it's meant only for page table address translation
+ */
 RCS421RegVal vir2phy_addr(unsigned long vaddr) {
     unsigned long index = (vaddr - VMEM_1_BASE) >> PAGESHIFT;
     struct pte *ptr1 = (struct pte *)ReadRegister(REG_PTR1);

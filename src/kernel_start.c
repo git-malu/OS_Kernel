@@ -21,6 +21,7 @@ struct pcb *lists[NUM_LISTS];
 /////////////
 struct pte *ptr0_idle;
 struct pte *ptr0_init;
+struct terminal terminals[NUM_TERMINALS];
 
 
 SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to);
@@ -130,6 +131,13 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     vm_enabled = TRUE;
 
     /*
+     *initialize terminals
+     */
+    for (int i = 0; i < NUM_TERMINALS; i++) {
+        terminals[i].process = NULL;
+    }
+
+    /*
      * process scheduling queue initialization
      */
 
@@ -151,9 +159,8 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     idle_pcb->countdown = 0;
     idle_pcb->child_list = NULL;
     idle_pcb->parent = NULL;
-    idle_pcb->exit_queue = alloc_dequeue();//allocate initialized dequeue
+    idle_pcb->exit_queue = alloc_dequeue(); //allocate initialized dequeue
     idle_pcb->exit_status = 0;
-//    idle_pcb->sibling = NULL;
     for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
         idle_pcb->next[i] = NULL;
     }
@@ -162,23 +169,13 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     //load program to idle process
     LoadProgram("./src/idle", cmd_args, info, idle_pcb); // initialize brk at the same time
 
-
-
     TracePrintf(0,"Kernelstart: idle process is successfully loaded.\n");
 
-//    pcb_queue_add(READY_QUEUE, idle_pcb);//TODO just for test here, remove it later!
-
-////    ContextSwitch(do_nothing, idle_pcb->ctx, idle_pcb, idle_pcb);//TODO test only
-//    TracePrintf(0,"debug: back to do_nothing contextswtich\n");
 
     /*
      * create init PCB
      */
     init_pcb = malloc(sizeof(struct pcb));
-//    struct free_page_table * ptttt= alloc_free_page_table();
-//    ptr0_init = (struct pte *)(ptttt->vir_addr);//TODO test only delete later
-//    test = (struct pte *)(ptttt->phy_addr);//TODO test only delete later
-//    TracePrintf(0,"phy is %d, vir is %d.\n", test, ptr0_init);
     init_pcb->ptr0 = initialize_ptr0(ptr0_init);
     init_pcb->pid = 1;
     init_pcb->ctx = malloc(sizeof(SavedContext));
@@ -187,19 +184,13 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     init_pcb->child_list = NULL;
     init_pcb->exit_queue = alloc_dequeue();//allocate initialized dequeue
     init_pcb->exit_status = 0;
-//    init_pcb->sibling = NULL;
+
     for (int i = 0; i < NUM_QUEUES + NUM_LISTS; i++) {
         init_pcb->next[i] = NULL;
     }
     TracePrintf(0, "Kernelstart: Load init process\n");
 
-//    current_process = init_pcb;//set current user process //already init pcb
-
-    //copy 4 physical pages
-//    ContextSwitch(idle_ks_copy, malloc(sizeof(SavedContext)), idle_pcb, init_pcb);//TODO test only
-
-
-    ContextSwitch(idle_ks_copy, idle_pcb->ctx, idle_pcb, init_pcb); //TODO test!!!!!!
+    ContextSwitch(idle_ks_copy, idle_pcb->ctx, idle_pcb, init_pcb); //
     if (current_process->pid == 0) {
         return; // return immediately
     }
@@ -207,8 +198,6 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     //load
     TracePrintf(0, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!\n");
     LoadProgram("./src/init", cmd_args, info, init_pcb);
-    //save context
-//    ContextSwitch(save_ctx, idle_pcb->ctx, NULL, NULL); //TODO test!!!!!!
     TracePrintf(0, "!~~!~~~!~~~~!~~!~~~~~~!~~~~!~~~!~~~~~~~!~~~~~!~~~~!~~!\n");
     TracePrintf(0, "Kernelstart: kernel start complete!\n");
 }
@@ -240,12 +229,11 @@ SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
     memcpy(kernel_stack_temp, (void *)KERNEL_STACK_BASE, KERNEL_STACK_PAGES * PAGESIZE); // save to temp
     // switch page table
     WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
-//    WriteRegister(REG_PTR0, (RCS421RegVal)test);//TODO test only change back later
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
     memcpy((void *)KERNEL_STACK_BASE, kernel_stack_temp, KERNEL_STACK_PAGES * PAGESIZE); // copy 4 kernel stack pages
     TracePrintf(0, "ctx_swtich complete.\n");
     current_process = init_pcb;
     return ctxp;
-}; //TODO test only
+};
 
 

@@ -3,24 +3,26 @@
 #include "../include/kernel.h"
 #include <string.h>
 
-SavedContext *delay_to_idle(SavedContext *, void *, void *);
+//SavedContext *delay_to_idle(SavedContext *, void *, void *);
 SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to);
-SavedContext *to_idle(SavedContext *ctxp, void *from, void *to);
-SavedContext *to_next_ready(SavedContext *ctxp, void *from, void *to);
+
 
 int kernel_Fork(void) {
     TracePrintf(0, "Syscall: kernel_Fork syscall is called.\n");
     struct free_page_table *new_pt_node = alloc_free_page_table(); //get a new page table who has continuous physical address
     struct pte *ptr0 = new_pt_node->vir_addr;
 //    initialize_ptr0(ptr0);//allocate physical frames for kernel stack, and create corresponding pte
-    struct pcb * new_pcb = create_child_pcb(ptr0, current_process);//create pcb for new process, initialize using parent info
+    struct pcb *new_pcb = create_child_pcb(ptr0, current_process);//create pcb for new process, initialize using parent info
     struct pcb *save_current_process = current_process;
-    TracePrintf(0,"Lu Ma: start the context switch in the kernel_fork.\n");
+
+    TracePrintf(0,"Lu Ma: Fork\n");
     ContextSwitch(program_cpy, current_process->ctx, current_process, new_pcb);//copy program to new process, copy pte protection to new process
-    TracePrintf(0,"fork context switch success\n");
+
     if (current_process->pid == save_current_process->pid) {
+        TracePrintf(0,"   fork return as parent.");
         return new_pcb->pid;//Now I'm parent
     } else {
+        TracePrintf(0,"   fork return as child.");
         return 0;//Now I'm child_list TODO check
     }
 }
@@ -30,8 +32,6 @@ SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
     struct pcb *pcb_to = (struct pcb *)to;
     struct pte *src_ptr0 = pcb_from->ptr0;
     struct pte *dst_ptr0 = pcb_to->ptr0;
-//    //
-//    pcb_to->parent = pcb_from;
 
     //prepare address mapping for copy
     src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].valid = 1;
@@ -51,7 +51,7 @@ SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to) {
 
             dst_ptr0[i].pfn = get_free_frame();
             //copy one page from src to dst
-            TracePrintf(0, "Lu Ma: assign a free frame(pfn) in program_cpy. the pfn is %d, the vpn is %d\n", dst_ptr0[i].pfn, i);
+            TracePrintf(10, "Lu Ma: assign a free frame(pfn) in program_cpy. the pfn is %d, the vpn is %d\n", dst_ptr0[i].pfn, i);
             WriteRegister(REG_TLB_FLUSH, USER_STACK_LIMIT); //flush just one page corresponding to USER_STACK_LIMIT
             src_ptr0[USER_STACK_LIMIT >> PAGESHIFT].pfn = dst_ptr0[i].pfn; //connect to same physical frame
             memcpy((void *)USER_STACK_LIMIT, (void *)(unsigned long)(i << PAGESHIFT), PAGESIZE);
@@ -146,8 +146,10 @@ SavedContext *to_idle(SavedContext *ctxp, void *from, void *to){
 
 SavedContext *to_next_ready(SavedContext *ctxp, void *from, void *to){
     RCS421RegVal phy_addr_ptr0 = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
+    TracePrintf(0, "    virtual address to physical address. %p , %p\n", phy_addr_ptr0, init_pcb->ptr0);
     WriteRegister(REG_PTR0, phy_addr_ptr0);
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    TracePrintf(0, "    switch to next ready, pid is %d\n", ((struct pcb *)to)->pid );
     current_process = (struct pcb *)to;
     return ((struct pcb *)to)->ctx;
 }
@@ -223,27 +225,59 @@ int kernel_Delay(int clock_ticks) {
     current_process->countdown = clock_ticks;
 //    delay_list_add(current_process); // add to delay list
     pcb_list_add(DELAY_LIST, current_process); //add to delay list
-    ContextSwitch(delay_to_idle, current_process->ctx, current_process, idle_pcb);
+    struct pcb * next_ready = pcb_queue_get(READY_QUEUE, NULL);
+    if (next_ready == NULL) {
+        //go to idle
+        TracePrintf(3, "calling delay, the next ready is null.\n");
+        ContextSwitch(to_idle, current_process->ctx, current_process, idle_pcb);
+    } else {
+        //go to next ready
+        TracePrintf(3, "calling delay, the next ready is pid %d.\n", next_ready->pid);
+        ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready);
+    }
     return 0;
 }
 
-SavedContext *delay_to_idle(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
-    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
-    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-    current_process = pcb_to;
-    return ((struct pcb *)pcb_to)->ctx;
-};
+//SavedContext *delay_to_idle(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
+//    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
+//    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+//    current_process = pcb_to;
+//    return ((struct pcb *)pcb_to)->ctx;
+//};
 
 
 /*
  * terminal
  */
 int kernel_TtyRead(int tty_id, void *buf, int len) {
-    TracePrintf(0, "Syscall: kernel_TtyRead syscall is called. System Halts.\n");
-    Halt();
+    TracePrintf(0, "Syscall: kernel_TtyRead syscall is called.\n");
+
+    return 0;
 }
 
 int kernel_TtyWrite(int tty_id, void *buf, int len) {
-    TracePrintf(0, "Syscall: kernel_TtyWrite syscall is called. System Halts.\n");
-    Halt();
+    if(tty_id >= NUM_TERMINALS || buf == NULL || len < 0 || len > TERMINAL_MAX_LINE) {
+        return ERROR;
+    }
+
+    TracePrintf(0, "   Syscall: kernel_TtyWrite syscall is called. the tty_id is %d\n", tty_id);
+
+    memcpy(terminals[tty_id].buffer_write, buf, len); //save the string to kernel memory
+    TracePrintf(0, "   are you busy?1\n", tty_id);
+    TtyTransmit(tty_id, terminals[tty_id].buffer_write, len); // transmit a buffer of characters
+    TracePrintf(0, "   are you busy?2\n", tty_id);
+    //store the process in the terminal array
+    terminals[tty_id].process = current_process;
+    //there is no queue for this process to join, simply switch to idle or next ready
+    struct pcb * next_ready = pcb_queue_get(READY_QUEUE, NULL);
+    if (next_ready == NULL) {
+        //go to idle
+        TracePrintf(3, "calling ttyWrite, the next ready is null.\n");
+        ContextSwitch(to_idle, current_process->ctx, current_process, idle_pcb);
+    } else {
+        //go to next ready
+        TracePrintf(3, "calling ttyWrite, the next ready is pid %d.\n", next_ready->pid);
+        ContextSwitch(to_next_ready, current_process->ctx, current_process, next_ready);
+    }
+    return len;
 }
