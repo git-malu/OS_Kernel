@@ -24,6 +24,7 @@ struct pte *ptr0_init;
 struct terminal terminals[NUM_TERMINALS];
 char kernel_stack_temp[KERNEL_STACK_PAGES * PAGESIZE];
 
+
 SavedContext *idle_ks_copy(SavedContext *ctxp, void *pcb_from, void *pcb_to);
 
 void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **cmd_args) {
@@ -134,13 +135,16 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
      *initialize terminals
      */
     for (int i = 0; i < NUM_TERMINALS; i++) {
-        terminals[i].process = NULL;
+        terminals[i].current_writer = NULL;
         terminals[i].read_queue = malloc(sizeof(struct dequeue));
         terminals[i].read_queue->head = NULL;
         terminals[i].read_queue->tail = NULL;
         terminals[i].write_queue = malloc(sizeof(struct dequeue));
         terminals[i].write_queue->head = NULL;
         terminals[i].write_queue->tail = NULL;
+        terminals[i].line_queue = malloc(sizeof(struct line_dequeue));
+        terminals[i].line_queue->head = NULL;
+        terminals[i].line_queue->tail = NULL;
     }
 
     /*
@@ -173,7 +177,7 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     TracePrintf(0,"Kernelstart: Load idle process\n");
 
     //load program to idle process
-    LoadProgram("./src/idle", cmd_args, info, idle_pcb); // initialize brk at the same time
+    LoadProgram(cmd_args[0], cmd_args, info, idle_pcb); // initialize brk at the same time
 
     TracePrintf(0,"Kernelstart: idle process is successfully loaded.\n");
 
@@ -203,7 +207,7 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
 
     //load
     TracePrintf(0, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~!\n");
-    LoadProgram("./src/init", cmd_args, info, init_pcb);
+    LoadProgram("init", cmd_args, info, init_pcb);
     TracePrintf(0, "!~~!~~~!~~~~!~~!~~~~~~!~~~~!~~~!~~~~~~~!~~~~~!~~~~!~~!\n");
     TracePrintf(0, "Kernelstart: kernel start complete!\n");
 }

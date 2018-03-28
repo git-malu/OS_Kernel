@@ -22,11 +22,13 @@ extern struct dequeue {
 } *queues[];
 extern struct pcb *lists[];
 extern struct terminal {
-    struct pcb *process;
+    struct pcb *current_writer;
+    struct pcb *current_reader;
+    struct line_dequeue *line_queue;
     char read_buffer[TERMINAL_MAX_LINE];
     char write_buffer[TERMINAL_MAX_LINE];
-    struct dequeue *write_queue;
-    struct dequeue *read_queue;
+    struct dequeue *write_queue; //write in order
+    struct dequeue *read_queue; //read in order
 } terminals[];
 
 /*
@@ -100,6 +102,17 @@ struct free_page_table {
     struct free_page_table *next;
 };
 
+struct line {
+    char *s;
+    int len;
+    struct line *next;
+};
+
+struct line_dequeue {
+    struct line *head;
+    struct line *tail;
+};
+
 int verify_buffer(void *p, int len);
 int verify_string(char *s);
 int SetKernelBrk(void *addr);
@@ -118,3 +131,6 @@ void pcb_list_add(int list_name, struct pcb* target_pcb);
 struct dequeue *alloc_dequeue();
 void wait_list_update();
 void idle_or_next_ready();
+void line_queue_add(int tty_id, struct line *target_line);
+struct line *line_queue_get(int tty_id);
+SavedContext *ctx_sw(SavedContext *ctxp, void *from, void *to);

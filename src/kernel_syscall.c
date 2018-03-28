@@ -2,6 +2,7 @@
 #include <comp421/hardware.h>
 #include "../include/kernel.h"
 #include <string.h>
+#include <stdlib.h>
 
 //SavedContext *delay_to_idle(SavedContext *, void *, void *);
 SavedContext *program_cpy(SavedContext *ctxp, void *from, void *to);
@@ -146,10 +147,8 @@ SavedContext *to_idle(SavedContext *ctxp, void *from, void *to){
 
 SavedContext *to_next_ready(SavedContext *ctxp, void *from, void *to){
     RCS421RegVal phy_addr_ptr0 = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
-    TracePrintf(0, "    virtual address to physical address. %p , %p\n", phy_addr_ptr0, init_pcb->ptr0);
     WriteRegister(REG_PTR0, phy_addr_ptr0);
     WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-    TracePrintf(0, "    switch to next ready, pid is %d\n", ((struct pcb *)to)->pid );
     current_process = (struct pcb *)to;
     return ((struct pcb *)to)->ctx;
 }
@@ -247,12 +246,76 @@ int kernel_Delay(int clock_ticks) {
 
 
 /*
- * terminal
+ * consumer
  */
 int kernel_TtyRead(int tty_id, void *buf, int len) {
+    int res;
     TracePrintf(0, "Syscall: kernel_TtyRead syscall is called.\n");
+    if(tty_id >= NUM_TERMINALS || buf == NULL || len < 0 || len > TERMINAL_MAX_LINE) {
+        return ERROR;
+    }
 
-    return 0;
+//    struct pcb *next_read = pcb_queue_get(READ_QUEUE, tty_id, NULL);
+    TracePrintf(0, "Syscall: kernel_TtyRead syscall is called. 2 \n");
+    // see current reader
+    if (terminals[tty_id].current_reader != NULL) {
+        //queue up
+        TracePrintf(0, "Syscall: kernel_TtyRead syscall is called. 3 \n");
+        pcb_queue_add(READ_QUEUE, tty_id, current_process);
+        idle_or_next_ready();
+    }
+
+    //no other process is reading
+    terminals[tty_id].current_reader = current_process; //now I become the current reader
+
+
+    //see if there is content to read
+    struct line *target_line = line_queue_get(tty_id);
+    if (target_line == NULL) {
+        //nothing to read
+        //leave but I'm still the current reader!
+        TracePrintf(0, "   ttyread: target line is empty \n");
+        idle_or_next_ready();
+        target_line = line_queue_get(tty_id); //I'm back, update content!
+    }
+
+    TracePrintf(0, "Back to TtyRead!  kernel_TtyRead syscall is called. 4 \n");
+    if (target_line->len <= len) {
+        //read whole line
+        memcpy(buf, target_line->s, target_line->len);
+        res = target_line->len;
+        TracePrintf(0, "Syscall: kernel_TtyRead syscall is called. 5 \n");
+    } else {
+        //read part of a line
+        struct line *new_line = malloc(sizeof(struct line));
+        new_line->s = malloc(target_line->len - len);
+        new_line->len = target_line->len - len;
+        TracePrintf(0, "Syscall: kernel_TtyRead syscall is called. 6 \n");
+        if (terminals[tty_id].line_queue->head == NULL) {
+            terminals[tty_id].line_queue->head = new_line;
+            terminals[tty_id].line_queue->tail = new_line;
+        } else {
+            new_line->next = terminals[tty_id].line_queue->head;
+            terminals[tty_id].line_queue->head = new_line;
+        }
+        TracePrintf(0, "Syscall: kernel_TtyRead syscall is called. 7 \n");
+        memcpy(buf, target_line->s, len); //read
+        memcpy(new_line->s, target_line->s + len, target_line->len - len); //cut
+        res = len;
+    }
+    //read complete
+    //remember to free memory
+    free(target_line);
+    terminals[tty_id].current_reader = NULL;
+    //
+    struct pcb *next_read = pcb_queue_get(READ_QUEUE, tty_id, NULL);
+    if (next_read != NULL) {
+        pcb_queue_add(READY_QUEUE, 0, current_process);
+        ContextSwitch(ctx_sw, current_process->ctx, current_process, next_read);
+    }
+    //memory in kernel? yes, it's allocated by malloc in kernel mode.
+
+    return res;
 }
 
 int kernel_TtyWrite(int tty_id, void *buf, int len) {
@@ -260,9 +323,10 @@ int kernel_TtyWrite(int tty_id, void *buf, int len) {
         return ERROR;
     }
 
-    TracePrintf(0, "   Syscall: kernel_TtyWrite syscall is called. the tty_id is %d\n", tty_id);
+    TracePrintf(0, "Syscall: kernel_TtyWrite syscall is called. the tty_id is %d\n", tty_id);
 
-    if (terminals[tty_id].process != NULL) {
+    if (terminals[tty_id].current_writer != NULL) {
+        TracePrintf(0, "       writing is busy queue up\n");
         //terminal busy, add to WRITE_QUEUE
         pcb_queue_add(WRITE_QUEUE, tty_id, current_process);
         idle_or_next_ready(); //wait in I/O queue
@@ -270,11 +334,10 @@ int kernel_TtyWrite(int tty_id, void *buf, int len) {
     }
     //terminal not busy
     memcpy(terminals[tty_id].write_buffer, buf, len); //save the string to kernel memory
-    terminals[tty_id].process = current_process; // set busy
+    terminals[tty_id].current_writer = current_process; // set busy
     TtyTransmit(tty_id, terminals[tty_id].write_buffer, len); // transmit a buffer of characters
     //transmitting, block the current process here
     return len;
-
 }
 
 void idle_or_next_ready() {

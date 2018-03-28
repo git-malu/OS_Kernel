@@ -108,12 +108,6 @@ void pcb_queue_add(int q_name, int tty_id, struct pcb *target_pcb) {
         queues[q_name]->tail = target_pcb;
     }
 
-//    //update non-global queue
-//    if (q_name == EXIT_QUEUE) {
-//        //we need to find the corresponding parent of the exit queue
-//        target_pcb->parent->exit_queue = queues[q_name];
-//    }
-
 }
 
 /*
@@ -149,12 +143,6 @@ struct pcb *pcb_queue_get(int q_name, int tty_id, struct pcb *target_pcb) {
         res = old_head;
     }
 
-//    //update non-global queue
-//    if (target_pcb != NULL) {
-//        if (q_name == EXIT_QUEUE) {
-//            target_pcb->exit_queue = queues[q_name];
-//        }
-//    }
     return res;
 }
 
@@ -359,82 +347,46 @@ struct dequeue *alloc_dequeue() {
     return res;
 }
 
-//void free_a_frame(unsigned int freed_pfn) {
-//    struct free_frame *previous = NULL;
-//    struct free_frame *current = frame_list;
-//    struct free_frame *node = malloc(sizeof(struct free_frame));
-//    node->pfn = freed_pfn;
-//    if (current == NULL) {
-//        frame_list = node;
-//        ff_count++;
-//        return;
-//    }
-//    //when current != NULL and previous == NULL
-//    if (node->pfn < current->pfn) {
-//        node->next = current;
-//        frame_list = node;
-//        ff_count++;
-//        return;
-//    } else {
-//        previous = current;
-//        current = current->next; //advance
-//    }
-//    //when there is only one node in the frame list
-//    if (current == NULL) {
-//        previous->next = node;
-//        ff_count++;
-//        return;
-//    }
-//    //when there are at least two nodes in the frame list. pointer (previous, current)
-//    while (current != NULL) {
-//        if (node->pfn < current->pfn) {
-//            previous->next = node;
-//            node->next = current;
-//            ff_count++;
-//            return;
-//        } else {
-//            previous = current;
-//            current = current->next;//advance
-//        }
-//    }
-//    previous->next = node;
-//    ff_count++;
-//}
+void line_queue_add(int tty_id, struct line *target_line) {
+    struct line *old_head = terminals[tty_id].line_queue->head;
+    struct line *old_tail = terminals[tty_id].line_queue->tail;
 
+//    struct pcb *old_head = queues[q_name]->head;
+//    struct pcb *old_tail = queues[q_name]->tail;
+    if (old_head == NULL) {
+        terminals[tty_id].line_queue->head = target_line;
+        terminals[tty_id].line_queue->tail = target_line;
+//        queues[q_name]->head = target_pcb;
+//        queues[q_name]->tail = target_pcb;
+    } else {
+        old_tail->next = target_line;
+        target_line->next = NULL;
+        terminals[tty_id].line_queue->tail = target_line; //update pointer
+//        old_tail->next[q_name] = target_pcb;
+//        target_pcb->next[q_name] = NULL;
+//        queues[q_name]->tail = target_pcb;
+    }
+}
 
-//int get_continu_frames(int len) {
-//    struct free_frame *current = frame_list;
-//    struct free_frame *next = frame_list->next;
-//    struct free_frame *break_node = NULL;
-//    int i = 0;
-//    int head_pfn;
-//    if (current == NULL) {
-//        return ERROR;
-//    }
-//    while (i != len) {
-//        head_pfn = current->pfn;
-//        for (i = 1; i < len; ++i) {
-//            if (next == NULL) {
-//                return ERROR; // we reach the end of list before we get enough continous free frame yet.
-//            }
-//            if (current->pfn + 1 == next->pfn) {
-//                current = next;
-//                next = next->next;
-//                continue;
-//            } else {
-//                break_node = current;
-//                current = next;
-//                next = next->next;
-//                break; // try again
-//            }
-//        }
-//    }
-//
-//    if (break_node != NULL) {
-//        break_node->next = next; // frame list head remains the same
-//    } else {
-//        frame_list = next; //new head
-//    }
-//
-//    return head_pfn;
-//}
+struct line *line_queue_get(int tty_id) {
+    struct line *res;
+    struct line *old_head = terminals[tty_id].line_queue->head;
+    struct line *old_tail = terminals[tty_id].line_queue->tail;
+
+//    struct pcb *old_head = queues[q_name]->head;
+//    struct pcb *old_tail = queues[q_name]->tail;
+    if (old_head == NULL) {
+        res = NULL;
+    } else if (old_head == old_tail) {
+        terminals[tty_id].line_queue->head = NULL;
+        terminals[tty_id].line_queue->tail = NULL;
+        res = old_head;
+    } else {
+        terminals[tty_id].line_queue->head = old_head->next;
+        old_head->next = NULL;
+        res = old_head;
+    }
+
+    return res;
+}
+

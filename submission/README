@@ -1,0 +1,6 @@
+For convenience, "Makefile" and all the test files are in the outmost folder, denoted by "./" ,
+whereas all the kernel source files, including "idle" program, are in the "./src" folder.
+The header file "kernel.h" is in the "./include" folder.
+
+To test, please place all the test files in the outmost folder, same as Makefile, and add their names to the "ALL" rule in Makefile.
+And you don't need to change those ./src/* files in the Makefile.

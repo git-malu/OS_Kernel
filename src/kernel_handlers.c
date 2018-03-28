@@ -2,6 +2,8 @@
 #include <comp421/hardware.h>
 #include <stdlib.h>
 #include "../include/kernel.h"
+#include <string.h>
+#include <stdio.h>
 //    #define	YALNIX_FORK		1
 //    #define	YALNIX_EXEC		2
 //    #define	YALNIX_EXIT		3
@@ -14,6 +16,7 @@
 //    #define	YALNIX_TTY_WRITE	22
 
 SavedContext *to_write(SavedContext *ctxp, void *from, void *to);
+
 
 void syscall_handler(ExceptionInfo *ex_info) {
 
@@ -79,18 +82,42 @@ void clock_handler(ExceptionInfo *ex_info) {
 }
 
 
-
+/*
+ * producer
+ */
 void tty_receive_handler(ExceptionInfo *ex_info) {
+    int tty_id = ex_info->code;
+    int rec_len = TtyReceive(tty_id, terminals[tty_id].read_buffer, TERMINAL_MAX_LINE);
+    struct line *new_line = malloc(sizeof(struct line));
+    new_line->next = NULL;
+    new_line->len = rec_len;
+    new_line->s = malloc(sizeof(rec_len));
+    memcpy(new_line->s, terminals[tty_id].read_buffer, rec_len); //fill in the content
+    line_queue_add(tty_id, new_line);
 
+    //anyone waiting?
+    if (terminals[tty_id].current_reader != NULL) {
+        pcb_queue_add(READY_QUEUE, 0, current_process); //save current process to ready queue
+        ContextSwitch(ctx_sw, current_process->ctx, current_process, terminals[tty_id].current_reader);
+    }
+}
+
+SavedContext *ctx_sw(SavedContext *ctxp, void *from, void *to){
+    RCS421RegVal phy_addr_ptr0 = vir2phy_addr((unsigned long)(((struct pcb *)to)->ptr0));
+    WriteRegister(REG_PTR0, phy_addr_ptr0);
+    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
+    current_process = (struct pcb *)to;
+    return ((struct pcb *)to)->ctx;
 }
 
 void tty_transmit_handler(ExceptionInfo *ex_info) {
     TracePrintf(0, "tty_transmit_handler is triggered.\n");
     int tty_id = ex_info->code;
-    terminals[tty_id].process = NULL; // clear, not busy anymore
+    terminals[tty_id].current_writer = NULL; // clear, not busy anymore
     //get the write_queue continue moving
     struct pcb *next_write = pcb_queue_get(WRITE_QUEUE, tty_id, NULL);
     if (next_write != NULL) {
+        pcb_queue_add(READY_QUEUE, 0, current_process); //save current process to ready queue
         ContextSwitch(to_write, current_process->ctx, current_process, next_write);
     }
 }
@@ -104,46 +131,105 @@ SavedContext *to_write(SavedContext *ctxp, void *from, void *to){
 }
 
 void illegal_handler(ExceptionInfo *ex_info) {
-
+    int pid = current_process->pid;
+    switch(ex_info->code){
+        case TRAP_ILLEGAL_ILLOPC:
+            printf("Illegal opcode. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_ILLOPN:
+            printf("Illegal operand. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_ILLADR:
+            printf("Illegal addressing mode. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_ILLTRP:
+            printf("Illegal software trap. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_PRVOPC:
+            printf("Privileged opcode. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_PRVREG:
+            printf("Privileged register. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_COPROC:
+            printf("Coprocessor error. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_BADSTK:
+            printf("Bad stack. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_KERNELI:
+            printf("Linux kernel sent SIGILL. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_USERIB:
+            printf("Received SIGILL or SIGBUS from user. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_ADRALN:
+            printf("Invalid address alignment. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_ADRERR:
+            printf("Non-existent physical address. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_OBJERR:
+            printf("Object-specific HW error. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_ILLEGAL_KERNELB:
+            printf("Linux kernel sent SIGBUS. The pid of current process is %d.\n", pid);
+            break;
+        default:
+            break;
+    }
+    kernel_Exit(ERROR);
 }
 
 void memory_handler(ExceptionInfo *ex_info) {
-
+    unsigned long addr = ex_info->addr;
+    if (addr >= (current_process->brk + PAGESIZE) && addr < USER_STACK_LIMIT) {
+        current_process->ptr0[addr >> PAGESHIFT].valid = 1;
+        current_process->ptr0[addr >> PAGESHIFT].uprot = PROT_READ | PROT_WRITE;
+        current_process->ptr0[addr >> PAGESHIFT].kprot = PROT_READ | PROT_WRITE;
+        current_process->ptr0[addr >> PAGESHIFT].pfn = get_free_frame();
+    } else {
+        kernel_Exit(ERROR);
+    }
 }
 
 void math_handler(ExceptionInfo *ex_info) {
-
+    int pid = current_process->pid;
+    switch (ex_info->code) {
+        case TRAP_MATH_INTDIV:
+            printf("Integer divide by zero. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_INTOVF:
+            printf("Integer overflow. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_FLTDIV:
+            printf("Floating divide by zero. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_FLTOVF:
+            printf("Floating overflow. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_FLTUND:
+            printf("Floating underflow. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_FLTRES:
+            printf("Floating inexact result. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_FLTINV:
+            printf("Invalid floating operation. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_FLTSUB:
+            printf("FP subscript out of range. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_KERNEL:
+            printf("Linux kernel sent SIGFPE. The pid of current process is %d.\n", pid);
+            break;
+        case TRAP_MATH_USER:
+            printf("Received SIGFPE from user. The pid of current process is %d.\n", pid);
+            break;
+        default:
+            break;
+    }
+    kernel_Exit(ERROR);
 }
 
 
-
-
-//SavedContext *sw_to_next_ready(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
-//    TracePrintf(9, "Context swtich: clock handler: now in my context switch function, the pcb_to is pid %d.\n", ((struct pcb *)pcb_to)->pid);
-//    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
-//    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-//    current_process = pcb_to;
-//    if (((struct pcb *)pcb_from)->pid != 0) {
-//        pcb_queue_add(READY_QUEUE, pcb_from); //add to the ready queue
-//    }
-//    TracePrintf(9, "Context swtich: clock handler: end of context switch funciton.\n"); //TODO test
-//    return ((struct pcb *)pcb_to)->ctx;
-//};
-
-//SavedContext *sw_to_idle(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
-//    TracePrintf(0, "Context swtich: clock handler: switch from pid %d from idle process.\n", ((struct pcb *)pcb_from)->pid);
-//    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
-//    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-//    current_process = pcb_to;
-//    return ((struct pcb *)pcb_to)->ctx;
-//};
-
-//SavedContext *sw_to_next_ready(SavedContext *ctxp, void *pcb_from, void *pcb_to) {
-//    TracePrintf(0, "Context swtich: clock handler: now in my context switch function");
-//    WriteRegister(REG_PTR0, (RCS421RegVal)((struct pcb *)pcb_to)->ptr0);
-//    WriteRegister(REG_TLB_FLUSH, TLB_FLUSH_0);
-//    current_process = pcb_to;
-//    pcb_queue_add(READY_QUEUE, pcb_from);//TODO unsure
-//    TracePrintf(0, "ctx is %s when clock\n", *(idle_pcb->ctx)->s);//TODO test
-//    return ((struct pcb *)pcb_to)->ctx;
-//};
